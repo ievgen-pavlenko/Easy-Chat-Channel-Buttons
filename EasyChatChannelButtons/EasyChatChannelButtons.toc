@@ -1,0 +1,17 @@
+## Interface: 120001
+## Title: Chat Channel Buttons
+## Notes: Adds circular chat channel shortcut buttons next to the chat tab (ElvUI compatible)
+## Category-enUS: Chat
+## Category-deDE: Chat
+## Category-esES: Chat
+## Category-esMX: Chat
+## Category-frFR: Discussion
+## Category-itIT: Chat
+## Category-koKR: 대화
+## Category-ptBR: Bate-papo
+## Category-zhCN: 聊天
+## Category-zhTW: 對話
+## Author: Ievgen.Pavlenko
+## Version: 1.0
+
+EasyChatChannelButtons.lua
