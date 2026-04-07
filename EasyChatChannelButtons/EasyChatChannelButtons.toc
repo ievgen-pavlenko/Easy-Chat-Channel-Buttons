@@ -13,5 +13,6 @@
 ## Category-zhTW: 對話
 ## Author: Ievgen.Pavlenko
 ## Version: @project-version@
+## X-Curse-Project-ID: 1507000
 
 EasyChatChannelButtons.lua
