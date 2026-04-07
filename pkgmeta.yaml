@@ -1,4 +1,5 @@
 package-as: EasyChatChannelButtons
+curse-id: YOUR_PROJECT_ID
 
 ignore:
   - README.md
