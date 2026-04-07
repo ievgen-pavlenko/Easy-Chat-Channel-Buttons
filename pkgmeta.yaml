@@ -3,6 +3,10 @@ package-as: EasyChatChannelButtons
 move-folders:
   EasyChatChannelButtons/EasyChatChannelButtons: EasyChatChannelButtons
 
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown
+
 ignore:
   - README.md
   - .github

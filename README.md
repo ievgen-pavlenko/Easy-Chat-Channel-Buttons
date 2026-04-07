@@ -13,7 +13,19 @@ A World of Warcraft addon that adds small colored circular chat channel buttons 
   - **Instance Chat** — visible only when in an instance group
 - Clicking a button opens the chat box pre-filled with the correct slash command (e.g. `/g `)
 - Colors match WoW's built-in `ChatTypeInfo` theme
+- **Movable frame** — drag the button bar anywhere on screen; position is saved across sessions
 - Compatible with **ElvUI**
+
+## Moving the Button Bar
+
+The bar is locked by default. Use these slash commands to reposition it:
+
+| Command | Effect |
+|---------|--------|
+| `/ecb unlock` | Unlocks the frame for dragging (yellow tint visible) |
+| `/ecb lock` | Locks the frame and saves its position |
+
+Position is stored in `EasyChatChannelButtonsDB` and restored automatically on login.
 
 ## Installation
 

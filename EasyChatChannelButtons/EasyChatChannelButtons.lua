@@ -14,6 +14,9 @@ local CIRCLE_MASK = "Interface\\Minimap\\UI-Minimap-Background"
 local mainFrame = nil
 local buttons   = {}
 
+-- Saved-variables table (populated by the WoW client before PLAYER_LOGIN fires).
+EasyChatChannelButtonsDB = EasyChatChannelButtonsDB or {}
+
 -------------------------------------------------------------------------------
 -- Channel definitions
 -- visible()    : returns true when the button should be shown
@@ -162,6 +165,51 @@ local function GetChannelColor(channelDef)
 end
 
 -------------------------------------------------------------------------------
+-- Position & lock helpers
+-------------------------------------------------------------------------------
+local function SavePosition()
+    local x = mainFrame:GetLeft()
+    local y = mainFrame:GetBottom()
+    if x and y then
+        EasyChatChannelButtonsDB.x = x
+        EasyChatChannelButtonsDB.y = y
+    end
+end
+
+local function ApplyLockState(locked)
+    if locked then
+        mainFrame:SetMovable(false)
+        mainFrame:EnableMouse(false)
+        mainFrame:SetScript("OnDragStart", nil)
+        mainFrame:SetScript("OnDragStop", nil)
+        if mainFrame._dragBg then mainFrame._dragBg:Hide() end
+    else
+        mainFrame:SetMovable(true)
+        mainFrame:EnableMouse(true)
+        mainFrame:RegisterForDrag("LeftButton")
+        mainFrame:SetScript("OnDragStart", function(self) self:StartMoving() end)
+        mainFrame:SetScript("OnDragStop", function(self)
+            self:StopMovingOrSizing()
+            SavePosition()
+        end)
+        if mainFrame._dragBg then mainFrame._dragBg:Show() end
+    end
+end
+
+local function UnlockFrame()
+    EasyChatChannelButtonsDB.locked = false
+    ApplyLockState(false)
+    print("|cff00ff00EasyChatChannelButtons:|r Frame unlocked — drag to reposition, then /ecb lock.")
+end
+
+local function LockFrame()
+    EasyChatChannelButtonsDB.locked = true
+    SavePosition()
+    ApplyLockState(true)
+    print("|cff00ff00EasyChatChannelButtons:|r Frame locked.")
+end
+
+-------------------------------------------------------------------------------
 -- RefreshLayout
 -- Reflows all visible buttons left-to-right with no gaps for hidden ones.
 -------------------------------------------------------------------------------
@@ -279,11 +327,29 @@ local function CreateMainFrame()
     mainFrame:SetFrameStrata("HIGH")
     mainFrame:SetFrameLevel(100)
 
+    -- Drag-mode indicator: yellow tint shown only while the frame is unlocked.
+    local dragBg = mainFrame:CreateTexture(nil, "BACKGROUND", nil, -2)
+    dragBg:SetAllPoints()
+    dragBg:SetTexture("Interface\\BUTTONS\\WHITE8X8")
+    dragBg:SetVertexColor(1, 0.8, 0, 0.25)
+    dragBg:Hide()
+    mainFrame._dragBg = dragBg
+
     for i, channelDef in ipairs(channels) do
         buttons[i] = CreateChannelButton(mainFrame, channelDef)
     end
 
     UpdateButtonVisibility()
+
+    -- Restore saved position; fall back to the default anchor when none is saved.
+    if EasyChatChannelButtonsDB.x and EasyChatChannelButtonsDB.y then
+        mainFrame:ClearAllPoints()
+        mainFrame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT",
+            EasyChatChannelButtonsDB.x, EasyChatChannelButtonsDB.y)
+    end
+
+    -- Restore locked/unlocked state silently (default: locked).
+    ApplyLockState(EasyChatChannelButtonsDB.locked ~= false)
 end
 
 -------------------------------------------------------------------------------
@@ -299,9 +365,41 @@ eventFrame:RegisterEvent("PLAYER_GUILD_UPDATE")
 eventFrame:SetScript("OnEvent", function(_, event)
     if event == "PLAYER_LOGIN" then
         CreateMainFrame()
+
+        local version = C_AddOns.GetAddOnMetadata("EasyChatChannelButtons", "Version") or "?"
+        local hasSavedPos = EasyChatChannelButtonsDB.x ~= nil
+        local isLocked    = EasyChatChannelButtonsDB.locked ~= false
+
+        print("|cff00ff00Easy Chat Channel Buttons|r v" .. version .. " loaded.")
+        if hasSavedPos then
+            print("|cff00ff00ECB:|r Position restored from saved data.")
+        else
+            print("|cff00ff00ECB:|r Using default position.")
+        end
+        if isLocked then
+            print("|cff00ff00ECB:|r Frame is |cffc0c0c0locked|r. Use |cffffcc00/ecb unlock|r to move it.")
+        else
+            print("|cff00ff00ECB:|r Frame is |cffffff00unlocked|r. Drag to reposition, then |cffffcc00/ecb lock|r.")
+        end
     else
         if mainFrame then
             UpdateButtonVisibility()
         end
     end
 end)
+
+-------------------------------------------------------------------------------
+-- Slash commands:  /ecb lock  |  /ecb unlock
+-------------------------------------------------------------------------------
+SLASH_EASYCHATCHANNELBUTTONS1 = "/ecb"
+SlashCmdList["EASYCHATCHANNELBUTTONS"] = function(msg)
+    if not mainFrame then return end
+    local cmd = strtrim(msg):lower()
+    if cmd == "unlock" then
+        UnlockFrame()
+    elseif cmd == "lock" then
+        LockFrame()
+    else
+        print("|cff00ff00EasyChatChannelButtons:|r Usage:  /ecb lock  |  /ecb unlock")
+    end
+end

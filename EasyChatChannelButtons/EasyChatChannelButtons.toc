@@ -14,5 +14,6 @@
 ## Author: Ievgen.Pavlenko
 ## Version: @project-version@
 ## X-Curse-Project-ID: 1507000
+## SavedVariables: EasyChatChannelButtonsDB
 
 EasyChatChannelButtons.lua
