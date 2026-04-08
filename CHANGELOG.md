@@ -1,4 +1,8 @@
 # Changelog
+## [1.0.3] - 2026-04-08
+### Added
+- ElvUI visual integration: buttons automatically adopt a flat, minimal style when ElvUI is loaded
+
 ## [1.0.2] - 2026-04-08
 ### Fixed
 - Buttons now render as perfect circles with no visible square edges

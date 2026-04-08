@@ -16,6 +16,10 @@ local buttons   = {}
 -- Saved-variables table (populated by the WoW client before PLAYER_LOGIN fires).
 EasyChatChannelButtonsDB = EasyChatChannelButtonsDB or {}
 
+-- ElvUI core reference – resolved once at PLAYER_LOGIN after all addons load.
+-- Nil when ElvUI is not installed.
+local ElvUIE = nil
+
 -------------------------------------------------------------------------------
 -- Channel definitions
 -- visible()    : returns true when the button should be shown
@@ -261,9 +265,7 @@ local function CreateChannelButton(parent, channelDef)
     local btn = CreateFrame("Button", nil, parent)
     btn:SetSize(BUTTON_SIZE, BUTTON_SIZE)
 
-    -- Strip ALL four default Button frame textures. Without this, WoW renders
-    -- the normal/pushed/highlight/disabled slots as plain rectangles, which
-    -- would make the button look square no matter what custom textures we add.
+    -- Strip all default Button textures so no Blizzard chrome is rendered.
     btn:SetNormalTexture("")
     btn:SetPushedTexture("")
     btn:SetHighlightTexture("")
@@ -271,27 +273,53 @@ local function CreateChannelButton(parent, channelDef)
 
     local r, g, b = GetChannelColor(channelDef)
 
-    -- ── Dark circular border ────────────────────────────────────────────────
-    local border = btn:CreateTexture(nil, "BACKGROUND", nil, -1)
-    border:SetPoint("TOPLEFT",     btn, "TOPLEFT",      -1,  1)
-    border:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT",   1, -1)
-    border:SetColorTexture(0, 0, 0, 0.55)
-    local borderMask = btn:CreateMaskTexture()
-    borderMask:SetTexture(CIRCLE_MASK_TEX)
-    borderMask:SetAllPoints(border)
-    border:AddMaskTexture(borderMask)
+    if ElvUIE then
+        -------------------------------------------------------------------------------
+        -- ElvUI path: CreateBackdrop is injected by ElvUI into ALL frame metatables
+        -- (not a method on E itself). Call it on the button so ElvUI registers the
+        -- frame in its update list and draws its standard 1px border ring.
+        -- The backdrop background is made transparent; a circular masked texture
+        -- provides the colour so the button stays round while having an ElvUI border.
+        -------------------------------------------------------------------------------
+        btn:CreateBackdrop()
+        btn.backdrop:SetBackdropColor(r, g, b, 0.15)  -- subtle tint; border is ElvUI's
 
-    -- ── Coloured circle fill ─────────────────────────────────────────────────
-    local bg = btn:CreateTexture(nil, "BACKGROUND", nil, 0)
-    bg:SetAllPoints()
-    bg:SetColorTexture(r, g, b, 1)
-    local bgMask = btn:CreateMaskTexture()
-    bgMask:SetTexture(CIRCLE_MASK_TEX)
-    bgMask:SetAllPoints(bg)
-    bg:AddMaskTexture(bgMask)
-    btn._bg = bg
+        -- ── Circular colour fill ─────────────────────────────────────────────
+        local bg = btn:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
+        bg:SetColorTexture(r, g, b, 1)
+        local bgMask = btn:CreateMaskTexture()
+        bgMask:SetTexture(CIRCLE_MASK_TEX)
+        bgMask:SetAllPoints(bg)
+        bg:AddMaskTexture(bgMask)
+        btn._bg = bg
+    else
+        -------------------------------------------------------------------------------
+        -- Default path: dark circular border shadow + coloured fill.
+        -------------------------------------------------------------------------------
 
-    -- ── Hover highlight ─────────────────────────────────────────────────────
+        -- ── Dark circular border ────────────────────────────────────────────
+        local border = btn:CreateTexture(nil, "BACKGROUND", nil, -1)
+        border:SetPoint("TOPLEFT",     btn, "TOPLEFT",      -1,  1)
+        border:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT",   1, -1)
+        border:SetColorTexture(0, 0, 0, 0.55)
+        local borderMask = btn:CreateMaskTexture()
+        borderMask:SetTexture(CIRCLE_MASK_TEX)
+        borderMask:SetAllPoints(border)
+        border:AddMaskTexture(borderMask)
+
+        -- ── Coloured circle fill ─────────────────────────────────────────────
+        local bg = btn:CreateTexture(nil, "BACKGROUND", nil, 0)
+        bg:SetAllPoints()
+        bg:SetColorTexture(r, g, b, 1)
+        local bgMask = btn:CreateMaskTexture()
+        bgMask:SetTexture(CIRCLE_MASK_TEX)
+        bgMask:SetAllPoints(bg)
+        bg:AddMaskTexture(bgMask)
+        btn._bg = bg
+    end
+
+    -- ── Hover highlight (both paths) ─────────────────────────────────────────
     local hl = btn:CreateTexture(nil, "HIGHLIGHT", nil, 0)
     hl:SetAllPoints()
     hl:SetColorTexture(1, 1, 1, 0.25)
@@ -369,6 +397,11 @@ eventFrame:RegisterEvent("PLAYER_GUILD_UPDATE")
 
 eventFrame:SetScript("OnEvent", function(_, event)
     if event == "PLAYER_LOGIN" then
+        -- Resolve ElvUI now that all addons are fully initialised.
+        if ElvUI then
+            ElvUIE = unpack(ElvUI)
+        end
+
         CreateMainFrame()
 
         local version = C_AddOns.GetAddOnMetadata("EasyChatChannelButtons", "Version") or "?"
@@ -376,6 +409,9 @@ eventFrame:SetScript("OnEvent", function(_, event)
         local isLocked    = EasyChatChannelButtonsDB.locked ~= false
 
         print("|cff00ff00Easy Chat Channel Buttons|r v" .. version .. " loaded.")
+        if ElvUIE then
+            print("|cff00ff00ECB:|r ElvUI detected — using ElvUI style.")
+        end
         if hasSavedPos then
             print("|cff00ff00ECB:|r Position restored from saved data.")
         else
