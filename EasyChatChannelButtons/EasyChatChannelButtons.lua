@@ -8,8 +8,7 @@ local BUTTON_SIZE    = 10   -- diameter in pixels
 local BUTTON_SPACING = 7    -- gap between buttons
 local ANCHOR_OFFSET  = 10    -- horizontal gap from ChatFrame1Tab
 
--- Circular alpha mask built into the WoW client (no external files needed).
-local CIRCLE_MASK = "Interface\\Minimap\\UI-Minimap-Background"
+local CIRCLE_MASK_TEX = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask"
 
 local mainFrame = nil
 local buttons   = {}
@@ -276,24 +275,30 @@ local function CreateChannelButton(parent, channelDef)
     local border = btn:CreateTexture(nil, "BACKGROUND", nil, -1)
     border:SetPoint("TOPLEFT",     btn, "TOPLEFT",      -1,  1)
     border:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT",   1, -1)
-    border:SetTexture("Interface\\BUTTONS\\WHITE8X8")
-    border:SetVertexColor(0, 0, 0, 0.55)
-    border:SetMask(CIRCLE_MASK)
+    border:SetColorTexture(0, 0, 0, 0.55)
+    local borderMask = btn:CreateMaskTexture()
+    borderMask:SetTexture(CIRCLE_MASK_TEX)
+    borderMask:SetAllPoints(border)
+    border:AddMaskTexture(borderMask)
 
-    -- ── Coloured circle fill (macOS-style dot, no text) ─────────────────────
+    -- ── Coloured circle fill ─────────────────────────────────────────────────
     local bg = btn:CreateTexture(nil, "BACKGROUND", nil, 0)
     bg:SetAllPoints()
-    bg:SetTexture("Interface\\BUTTONS\\WHITE8X8")
-    bg:SetVertexColor(r, g, b, 1)
-    bg:SetMask(CIRCLE_MASK)
+    bg:SetColorTexture(r, g, b, 1)
+    local bgMask = btn:CreateMaskTexture()
+    bgMask:SetTexture(CIRCLE_MASK_TEX)
+    bgMask:SetAllPoints(bg)
+    bg:AddMaskTexture(bgMask)
     btn._bg = bg
 
     -- ── Hover highlight ─────────────────────────────────────────────────────
     local hl = btn:CreateTexture(nil, "HIGHLIGHT", nil, 0)
     hl:SetAllPoints()
-    hl:SetTexture("Interface\\BUTTONS\\WHITE8X8")
-    hl:SetVertexColor(1, 1, 1, 0.25)
-    hl:SetMask(CIRCLE_MASK)
+    hl:SetColorTexture(1, 1, 1, 0.25)
+    local hlMask = btn:CreateMaskTexture()
+    hlMask:SetTexture(CIRCLE_MASK_TEX)
+    hlMask:SetAllPoints(hl)
+    hl:AddMaskTexture(hlMask)
 
     -- ── Tooltip ─────────────────────────────────────────────────────────────
     btn:SetScript("OnEnter", function(self)

@@ -1,4 +1,8 @@
 # Changelog
+## [1.0.2] - 2026-04-08
+### Fixed
+- Buttons now render as perfect circles with no visible square edges
+
 ## [1.0.1] - 2026-04-07
 ### Added
 - Movable frame — drag the button bar anywhere on screen
