@@ -72,11 +72,6 @@ local function CreateDarkButton(parent, w, h, label)
     fs:SetText(label)
     btn._label = fs
 
-    -- If ElvUI is present, layer its backdrop and highlight on top.
-    if ECB:IsElvUILoaded() then
-        ECB:ApplyElvUIButtonStyle(btn)
-    end
-
     return btn
 end
 
@@ -144,6 +139,23 @@ local function CreateLabeledSlider(parent, cfg, anchorFrame, offsetY, width)
 end
 
 -------------------------------------------------------------------------------
+-- CreateLabeledCheckbox (module-private)
+-- Returns a CheckButton with a title label to its right.
+-- anchorFrame / offsetY position the checkbox relative to a previous widget.
+-------------------------------------------------------------------------------
+local function CreateLabeledCheckbox(parent, label, anchorFrame, offsetY)
+    local cb = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
+    cb:SetSize(20, 20)
+    cb:SetPoint("TOPLEFT", anchorFrame, "BOTTOMLEFT", 0, offsetY)
+
+    local lbl = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    lbl:SetPoint("LEFT", cb, "RIGHT", 4, 0)
+    lbl:SetText(label)
+
+    return cb
+end
+
+-------------------------------------------------------------------------------
 -- OnValueChanged handlers (module-private)
 -- Fired by user slider gestures AND by programmatic SetValue calls.
 --
@@ -180,12 +192,13 @@ end
 -- the per-slider OnValueChanged handlers don't each trigger a layout pass.
 -- A single ECB:ApplySettings call at the end applies all values at once.
 -------------------------------------------------------------------------------
-local function ApplyDefaults(sizeSlider, spacingSlider)
+local function ApplyDefaults(sizeSlider, spacingSlider, verticalCheck)
     local d = ECB:GetDefaults()   -- fresh CopyTable of ECB.defaults
     ECB.workingCopy = d
     updating = true
     sizeSlider:SetValue(d.bubbleSize)       -- updates thumb + label; skips pipeline
     spacingSlider:SetValue(d.bubbleSpacing) -- updates thumb + label; skips pipeline
+    verticalCheck:SetChecked(d.vertical)    -- syncs checkbox; skips pipeline
     updating = false
     ECB:ApplySettings(ECB.workingCopy)      -- single layout pass with all values
 end
@@ -244,14 +257,22 @@ function ECB:CreateBlizzardConfig()
     sizeSlider:SetScript("OnValueChanged",    OnSizeChanged)
     spacingSlider:SetScript("OnValueChanged", OnSpacingChanged)
 
+    local verticalCheck = CreateLabeledCheckbox(panel, "Vertical layout", spacingSlider, -30)
+    verticalCheck:SetScript("OnClick", function(self)
+        if updating then return end
+        ECB.workingCopy.vertical = self:GetChecked()
+        ECB:ApplySettings(ECB.workingCopy)
+    end)
+
     local defaultsBtn = CreateDarkButton(panel, 90, 22, "Defaults")
-    defaultsBtn:SetPoint("TOPLEFT", spacingSlider, "BOTTOMLEFT", 0, -24)
+    defaultsBtn:SetPoint("TOPLEFT", verticalCheck, "BOTTOMLEFT", 0, -16)
     defaultsBtn:SetScript("OnClick", function()
-        ApplyDefaults(sizeSlider, spacingSlider)
+        ApplyDefaults(sizeSlider, spacingSlider, verticalCheck)
     end)
 
     panel._sizeSlider    = sizeSlider
     panel._spacingSlider = spacingSlider
+    panel._verticalCheck = verticalCheck
 
     -- OnShow: seed model and sync sliders under the updating guard.
     panel:SetScript("OnShow", function()
@@ -260,13 +281,14 @@ function ECB:CreateBlizzardConfig()
         updating = true
         sizeSlider:SetValue(ECB.workingCopy.bubbleSize)
         spacingSlider:SetValue(ECB.workingCopy.bubbleSpacing)
+        verticalCheck:SetChecked(ECB.workingCopy.vertical)
         updating = false
     end)
 
     -- Blizzard panel lifecycle callbacks (called by the game, not by us).
     panel.okay    = function() CommitWorkingCopy() end
     panel.cancel  = function() CancelEditing()     end
-    panel.default = function() ApplyDefaults(sizeSlider, spacingSlider) end
+    panel.default = function() ApplyDefaults(sizeSlider, spacingSlider, verticalCheck) end
 
     -- Register with the Retail / Midnight Settings API; fall back for older clients.
     if Settings and Settings.RegisterCanvasLayoutCategory then
@@ -282,132 +304,19 @@ function ECB:CreateBlizzardConfig()
 end
 
 -------------------------------------------------------------------------------
--- ECB:CreateElvUIConfig
--- Builds a standalone draggable frame styled to match ElvUI's visual language:
---   • Full-frame backdrop via ECB:ApplyElvUIFrameStyle (CreateBackdrop)
---   • Dark header band + 1px separator
---   • Dark flat buttons and sliders (CreateDarkButton / CreateLabeledSlider)
---   • OnShow always seeds the data model
--- Called once; subsequent calls return the cached frame.
--------------------------------------------------------------------------------
-function ECB:CreateElvUIConfig()
-    if self._elvFrame then return self._elvFrame end
-
-    local FRAME_W  = 320
-    local FRAME_H  = 225
-    local HEADER_H = 24
-
-    local f = CreateFrame("Frame", "ECBConfigFrame", UIParent)
-    f:SetSize(FRAME_W, FRAME_H)
-    f:SetPoint("CENTER")
-    f:SetFrameStrata("DIALOG")
-    f:SetFrameLevel(200)
-    f:SetMovable(true)
-    f:EnableMouse(true)
-    f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart", f.StartMoving)
-    f:SetScript("OnDragStop",  f.StopMovingOrSizing)
-
-    -- Full-frame backdrop via ElvUI's injected CreateBackdrop.
-    ECB:ApplyElvUIFrameStyle(f)
-
-    -- Header band.
-    local headerBg = f:CreateTexture(nil, "BACKGROUND", nil, 1)
-    headerBg:SetPoint("TOPLEFT",  f, "TOPLEFT",  2, -2)
-    headerBg:SetPoint("TOPRIGHT", f, "TOPRIGHT", -2, -2)
-    headerBg:SetHeight(HEADER_H - 4)
-    headerBg:SetColorTexture(0.08, 0.08, 0.10, 0.95)
-
-    -- Separator.
-    local separator = f:CreateTexture(nil, "BACKGROUND", nil, 2)
-    separator:SetPoint("TOPLEFT",  f, "TOPLEFT",  2, -HEADER_H)
-    separator:SetPoint("TOPRIGHT", f, "TOPRIGHT", -2, -HEADER_H)
-    separator:SetHeight(1)
-    separator:SetColorTexture(0.30, 0.30, 0.35, 0.8)
-
-    -- Title in the header band.
-    local titleText = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    titleText:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -6)
-    titleText:SetText(C.ADDON_DISPLAY)
-
-    -- Close (X): Cancel behaviour.
-    local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    closeBtn:SetSize(HEADER_H, HEADER_H)
-    closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", 2, 2)
-    closeBtn:SetScript("OnClick", function()
-        CancelEditing()
-        f:Hide()
-    end)
-
-    -- Content anchor just below the separator.
-    local contentAnchor = f:CreateFontString(nil, "OVERLAY")
-    contentAnchor:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -(HEADER_H + 12))
-
-    local sizeSlider    = CreateLabeledSlider(f, C.SLIDER.bubbleSize,    contentAnchor, 0,  240)
-    local spacingSlider = CreateLabeledSlider(f, C.SLIDER.bubbleSpacing, sizeSlider,   -34, 240)
-
-    sizeSlider:SetScript("OnValueChanged",    OnSizeChanged)
-    spacingSlider:SetScript("OnValueChanged", OnSpacingChanged)
-
-    f._sizeSlider    = sizeSlider
-    f._spacingSlider = spacingSlider
-
-    -- Action buttons.
-    local okBtn = CreateDarkButton(f, 60, 22, "OK")
-    okBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 14, 14)
-    okBtn:SetScript("OnClick", function()
-        CommitWorkingCopy()
-        f:Hide()
-    end)
-
-    local cancelBtn = CreateDarkButton(f, 60, 22, "Cancel")
-    cancelBtn:SetPoint("LEFT", okBtn, "RIGHT", 6, 0)
-    cancelBtn:SetScript("OnClick", function()
-        CancelEditing()
-        f:Hide()
-    end)
-
-    local defaultsBtn = CreateDarkButton(f, 70, 22, "Defaults")
-    defaultsBtn:SetPoint("LEFT", cancelBtn, "RIGHT", 6, 0)
-    defaultsBtn:SetScript("OnClick", function()
-        ApplyDefaults(sizeSlider, spacingSlider)
-    end)
-
-    -- OnShow: seed model and sync sliders under the updating guard.
-    f:SetScript("OnShow", function()
-        ECB.savedBeforeEdit = ECB:CopyTable(ECB.db)
-        ECB.workingCopy     = ECB:CopyTable(ECB.db)
-        updating = true
-        sizeSlider:SetValue(ECB.workingCopy.bubbleSize)
-        spacingSlider:SetValue(ECB.workingCopy.bubbleSpacing)
-        updating = false
-    end)
-
-    f:Hide()
-    self._elvFrame = f
-    return f
-end
-
--------------------------------------------------------------------------------
 -- ECB:CreateConfigUI
--- Lazily creates the appropriate config UI depending on whether ElvUI is
--- loaded.  Returns the Blizzard panel or the ElvUI frame.
--- Safe to call multiple times; each branch is guarded by a cached reference.
+-- Lazily creates the Blizzard config panel.
+-- Safe to call multiple times; guarded by a cached reference.
 -------------------------------------------------------------------------------
 function ECB:CreateConfigUI()
-    if self:IsElvUILoaded() then
-        return self:CreateElvUIConfig()
-    else
-        return self:CreateBlizzardConfig()
-    end
+    return self:CreateBlizzardConfig()
 end
 
 -------------------------------------------------------------------------------
 -- ECB:InitializeConfig
 -- Called once from Core.lua's OnLogin() after the database is ready.
--- Eagerly builds and registers the config UI so the Blizzard options panel
--- appears in Interface > AddOns without the player needing to type /ecb first.
--- For ElvUI users the standalone frame is created but kept hidden until opened.
+-- Eagerly builds and registers the Blizzard options panel so it appears in
+-- Interface > AddOns without the player needing to type /ecb first.
 -------------------------------------------------------------------------------
 function ECB:InitializeConfig()
     self:CreateConfigUI()
@@ -436,25 +345,14 @@ function ECB:OpenConfig()
     updating = true
     if ui._sizeSlider    then ui._sizeSlider:SetValue(self.workingCopy.bubbleSize)       end
     if ui._spacingSlider then ui._spacingSlider:SetValue(self.workingCopy.bubbleSpacing) end
+    if ui._verticalCheck then ui._verticalCheck:SetChecked(self.workingCopy.vertical)    end
     updating = false
 
-    if self:IsElvUILoaded() then
-        -- Toggle the standalone ElvUI frame.
-        -- On close, CancelEditing restores ECB.db to its pre-open state so
-        -- a live-previewed but uncommitted value never leaks into ECB.db.
-        if ui:IsShown() then
-            CancelEditing()
-            ui:Hide()
-        else
-            ui:Show()
-        end
-    else
-        -- Open Blizzard Interface Options to this addon's panel.
-        -- Settings.OpenToCategory expects the numeric ID, not the category object.
-        if ui._category and Settings and Settings.OpenToCategory then
-            Settings.OpenToCategory(ui._category:GetID())
-        elseif InterfaceOptionsFrame_OpenToCategory then
-            InterfaceOptionsFrame_OpenToCategory(ui)
-        end
+    -- Open Blizzard Interface Options to this addon's panel.
+    -- Settings.OpenToCategory expects the numeric ID, not the category object.
+    if ui._category and Settings and Settings.OpenToCategory then
+        Settings.OpenToCategory(ui._category:GetID())
+    elseif InterfaceOptionsFrame_OpenToCategory then
+        InterfaceOptionsFrame_OpenToCategory(ui)
     end
 end

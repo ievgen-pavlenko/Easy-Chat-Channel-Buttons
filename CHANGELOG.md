@@ -1,4 +1,11 @@
 # Changelog
+## [1.0.5] - 2026-04-13
+### Added
+- Vertical layout option: new "Vertical layout" checkbox in the config panel to switch the button bar orientation
+
+### Changed
+- Config panel is now always shown in Blizzard Interface Options, regardless of whether ElvUI is loaded
+
 ## [1.0.4] - 2026-04-09
 ### Added
 - Config UI opened with `/ecb` or `/ecb config`

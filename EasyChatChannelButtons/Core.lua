@@ -15,6 +15,7 @@ ns.ECB = ECB
 ECB.defaults = {
     bubbleSize    = 10,
     bubbleSpacing = 7,
+    vertical      = false,
 }
 
 -------------------------------------------------------------------------------
@@ -110,15 +111,11 @@ local function OnLogin()
     local version = C_AddOns.GetAddOnMetadata(addonName, "Version") or "?"
     print("|cff00ff00Easy Chat Channel Buttons|r v" .. version .. " loaded.")
 
-    if ECB.ElvUIE then
-        print("|cff00ff00ECB:|r ElvUI detected \226\128\147 using ElvUI style.")
-    end
-
     local isLocked = ECB_DB.locked ~= false
     if isLocked then
-        print("|cff00ff00ECB:|r Frame is |cffc0c0c0locked|r. Use |cffffcc00/ecb unlock|r to move it.")
+        print("|cff00ff00Easy Chat Channel Buttons:|r Frame is |cffc0c0c0locked|r. Use |cffffcc00/ecb unlock|r to move it.")
     else
-        print("|cff00ff00ECB:|r Frame is |cffffff00unlocked|r. Drag to reposition, then |cffffcc00/ecb lock|r.")
+        print("|cff00ff00Easy Chat Channel Buttons:|r Frame is |cffffff00unlocked|r. Drag to reposition, then |cffffcc00/ecb lock|r.")
     end
 end
 

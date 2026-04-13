@@ -146,27 +146,40 @@ end
 -- frame is resized to match the visible content exactly.
 -------------------------------------------------------------------------------
 function ECB:RefreshButtons()
-    local size    = self.db.bubbleSize
-    local spacing = self.db.bubbleSpacing
-    local prev    = nil
-    local count   = 0
+    local size     = self.db.bubbleSize
+    local spacing  = self.db.bubbleSpacing
+    local vertical = self.db.vertical
+    local prev     = nil
+    local count    = 0
 
     for _, btn in ipairs(self.buttons) do
         btn:SetSize(size, size)
         if btn:IsShown() then
             btn:ClearAllPoints()
             if prev == nil then
-                btn:SetPoint("LEFT", self.mainFrame, "LEFT", 0, 0)
+                if vertical then
+                    btn:SetPoint("TOP", self.mainFrame, "TOP", 0, 0)
+                else
+                    btn:SetPoint("LEFT", self.mainFrame, "LEFT", 0, 0)
+                end
             else
-                btn:SetPoint("LEFT", prev, "RIGHT", spacing, 0)
+                if vertical then
+                    btn:SetPoint("TOP", prev, "BOTTOM", 0, -spacing)
+                else
+                    btn:SetPoint("LEFT", prev, "RIGHT", spacing, 0)
+                end
             end
             prev  = btn
             count = count + 1
         end
     end
 
-    local totalWidth = count > 0 and (count * size + (count - 1) * spacing) or 1
-    self.mainFrame:SetSize(totalWidth, size)
+    local total = count > 0 and (count * size + (count - 1) * spacing) or 1
+    if vertical then
+        self.mainFrame:SetSize(size, total)
+    else
+        self.mainFrame:SetSize(total, size)
+    end
 end
 
 -------------------------------------------------------------------------------
@@ -200,6 +213,7 @@ end
 function ECB:ApplySettings(settings)
     self.db.bubbleSize    = settings.bubbleSize
     self.db.bubbleSpacing = settings.bubbleSpacing
+    self.db.vertical      = settings.vertical
     -- UpdateButtonVisibility re-checks show/hide predicates and then calls
     -- RefreshButtons, so size, spacing, visibility, and layout are all updated
     -- in one pass.
