@@ -128,10 +128,14 @@ eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
 eventFrame:RegisterEvent("GUILD_ROSTER_UPDATE")
 eventFrame:RegisterEvent("PLAYER_GUILD_UPDATE")
+eventFrame:RegisterEvent("UPDATE_CHAT_COLOR")
 
 eventFrame:SetScript("OnEvent", function(_, event)
     if event == "PLAYER_LOGIN" then
         OnLogin()
+    elseif event == "UPDATE_CHAT_COLOR" then
+        -- Player changed a chat color in Interface Options — repaint buttons.
+        if ECB.mainFrame then ECB:UpdateButtonColors() end
     else
         -- Any group/world event may change which channels are relevant.
         if ECB.mainFrame then ECB:UpdateButtonVisibility() end

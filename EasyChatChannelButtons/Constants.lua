@@ -72,8 +72,8 @@ C.CHANNEL_SLASH = {
 --   label    – single-letter abbreviation shown if text labels are used
 --   tooltip  – human-readable name shown in the GameTooltip
 --   chatType – value passed to SwitchChatType / ChatTypeInfo
---   color    – { r, g, b } fallback when ChatTypeInfo is not available
 --   visible  – predicate returning true when this channel should be shown
+-- Color is read at runtime from ChatTypeInfo to match the player's game settings.
 -------------------------------------------------------------------------------
 C.CHANNELS = {
     {
@@ -81,7 +81,6 @@ C.CHANNELS = {
         label    = "S",
         tooltip  = C.TOOLTIPS.SAY,
         chatType = "SAY",
-        color    = { 1,    1,    1    },
         visible  = function() return true end,
     },
     {
@@ -89,7 +88,6 @@ C.CHANNELS = {
         label    = "Y",
         tooltip  = C.TOOLTIPS.YELL,
         chatType = "YELL",
-        color    = { 1,    0.25, 0.25 },
         visible  = function() return true end,
     },
     {
@@ -97,7 +95,6 @@ C.CHANNELS = {
         label    = "G",
         tooltip  = C.TOOLTIPS.GUILD,
         chatType = "GUILD",
-        color    = { 0.25, 1,    0.25 },
         visible  = function() return IsInGuild() end,
     },
     {
@@ -105,7 +102,6 @@ C.CHANNELS = {
         label    = "O",
         tooltip  = C.TOOLTIPS.OFFICER,
         chatType = "OFFICER",
-        color    = { 0.1,  0.55, 0.1  },
         visible  = function()
             return IsInGuild() and (CanEditOfficerNote and CanEditOfficerNote() or false)
         end,
@@ -115,7 +111,6 @@ C.CHANNELS = {
         label    = "P",
         tooltip  = C.TOOLTIPS.PARTY,
         chatType = "PARTY",
-        color    = { 0.45, 0.67, 1    },
         visible  = function()
             return IsInGroup(LE_PARTY_CATEGORY_HOME)
                and not IsInRaid(LE_PARTY_CATEGORY_HOME)
@@ -126,7 +121,6 @@ C.CHANNELS = {
         label    = "R",
         tooltip  = C.TOOLTIPS.RAID,
         chatType = "RAID",
-        color    = { 1,    0.49, 0.04 },
         visible  = function()
             return IsInRaid(LE_PARTY_CATEGORY_HOME)
         end,
@@ -136,7 +130,6 @@ C.CHANNELS = {
         label    = "I",
         tooltip  = C.TOOLTIPS.INSTANCE_CHAT,
         chatType = "INSTANCE_CHAT",
-        color    = { 1,    0.84, 0    },
         visible  = function()
             return IsInGroup(LE_PARTY_CATEGORY_INSTANCE)
         end,

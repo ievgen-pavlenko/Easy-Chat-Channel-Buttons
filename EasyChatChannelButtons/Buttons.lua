@@ -110,6 +110,7 @@ local function CreateChannelButton(parent, channelDef)
         glow:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT",  2, -2)
         glow:SetColorTexture(r, g, b, 0.35)
         AddCircleMask(glow, btn)
+        btn._glow = glow
     end
 
     -- Main fill: the only opaque art layer.
@@ -118,6 +119,7 @@ local function CreateChannelButton(parent, channelDef)
     bg:SetColorTexture(r, g, b, 1)
     AddCircleMask(bg, btn)
     btn._bg = bg
+    btn._channelDef  = channelDef
 
     -- Hover highlight — circular, low opacity.
     local hl = btn:CreateTexture(nil, "HIGHLIGHT", nil, 0)
@@ -193,6 +195,22 @@ function ECB:UpdateButtonVisibility()
         if ok and shouldShow then btn:Show() else btn:Hide() end
     end
     self:RefreshButtons()
+end
+
+-------------------------------------------------------------------------------
+-- ECB:UpdateButtonColors
+-- Re-reads ChatTypeInfo for every button and applies the current game colors
+-- to the background (and optional glow) textures.  Call this whenever the
+-- player changes chat colors in Interface Options (UPDATE_CHAT_COLOR event).
+-------------------------------------------------------------------------------
+function ECB:UpdateButtonColors()
+    for _, btn in ipairs(self.buttons) do
+        if btn._channelDef and btn._bg then
+            local r, g, b = self:GetChannelColor(btn._channelDef)
+            btn._bg:SetColorTexture(r, g, b, 1)
+            if btn._glow then btn._glow:SetColorTexture(r, g, b, 0.35) end
+        end
+    end
 end
 
 -------------------------------------------------------------------------------

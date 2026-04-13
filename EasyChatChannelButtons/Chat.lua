@@ -49,11 +49,12 @@ end
 
 -------------------------------------------------------------------------------
 -- ECB:GetChannelColor(channelDef)
--- Returns r, g, b for a channel definition.  Prefers the live ChatTypeInfo
--- values so colours respect the player's own chat settings.
+-- Returns r, g, b from the game's live ChatTypeInfo so colors always match
+-- the player's own chat color settings.  Falls back to white if ChatTypeInfo
+-- is unavailable (e.g. very early load order edge cases).
 -------------------------------------------------------------------------------
 function ECB:GetChannelColor(channelDef)
     local info = ChatTypeInfo and ChatTypeInfo[channelDef.chatType]
     if info and info.r then return info.r, info.g, info.b end
-    return channelDef.color[1], channelDef.color[2], channelDef.color[3]
+    return 1, 1, 1  -- neutral fallback; ChatTypeInfo is always present at PLAYER_LOGIN
 end

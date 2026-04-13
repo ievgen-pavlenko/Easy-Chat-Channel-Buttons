@@ -1,4 +1,12 @@
 # Changelog
+## [1.0.6] - 2026-04-13
+### Added
+- Addon icon is now shown in the addon list
+
+### Changed
+- Button colors now always match the player's own chat color settings from Interface Options
+- Changing chat colors in Interface Options instantly repaints the buttons without requiring a reload
+
 ## [1.0.5] - 2026-04-13
 ### Added
 - Vertical layout option: new "Vertical layout" checkbox in the config panel to switch the button bar orientation
