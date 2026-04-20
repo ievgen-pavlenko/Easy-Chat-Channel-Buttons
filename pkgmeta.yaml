@@ -1,5 +1,16 @@
 package-as: EasyChatChannelButtons
 
+externals:
+  EasyChatChannelButtons/libs/LibStub:
+    url: https://repos.wowace.com/wow/libstub/trunk
+    tag: latest
+  EasyChatChannelButtons/libs/LibDataBroker-1.1:
+    url: https://github.com/tekkub/libdatabroker-1-1.git
+    tag: latest
+  EasyChatChannelButtons/libs/LibDBIcon-1.0:
+    url: https://repos.wowace.com/wow/libdbicon-1-0/trunk
+    tag: latest
+
 move-folders:
   EasyChatChannelButtons/EasyChatChannelButtons: EasyChatChannelButtons
 

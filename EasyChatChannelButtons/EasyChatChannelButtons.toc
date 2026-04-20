@@ -17,6 +17,10 @@
 ## SavedVariables: ECB_DB EasyChatChannelButtonsDB
 ## IconTexture: Interface\AddOns\EasyChatChannelButtons\icon
 
+libs\LibStub\LibStub.lua
+libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
+libs\LibDBIcon-1.0\LibDBIcon-1.0.lua
+
 Core.lua
 Constants.lua
 Chat.lua
@@ -24,3 +28,4 @@ Utils.lua
 Buttons.lua
 ElvUI.lua
 Config.lua
+MinimapButton.lua

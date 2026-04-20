@@ -1,4 +1,9 @@
 # Changelog
+## [1.0.7] - 2026-04-20
+### Added
+- Minimap button — appears in the standard minimap addon button list; left-click opens the config panel
+- Lock/Unlock button in the config panel — toggles frame drag mode without needing slash commands; label reflects the current state when the panel opens
+
 ## [1.0.6] - 2026-04-13
 ### Added
 - Addon icon is now shown in the addon list

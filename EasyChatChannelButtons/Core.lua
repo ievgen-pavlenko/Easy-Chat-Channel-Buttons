@@ -70,17 +70,9 @@ function ECB:InitializeDatabase()
 
     ECB_DB = ECB_DB or {}
 
-    -- Backfill any key that is absent in the saved table (first run, or a new
-    -- setting was added in a later version).
+    -- Backfill any missing key and mirror into ECB.db in one pass.
     for k, v in pairs(self.defaults) do
-        if ECB_DB[k] == nil then
-            ECB_DB[k] = v
-        end
-    end
-
-    -- Build ECB.db as a clean copy of every persisted default-backed key.
-    -- Using a loop means new settings are automatically included.
-    for k in pairs(self.defaults) do
+        if ECB_DB[k] == nil then ECB_DB[k] = v end
         self.db[k] = ECB_DB[k]
     end
 end
@@ -102,21 +94,18 @@ local function OnLogin()
     -- runs its events.
     ECB:CreateMainFrame()
     ECB:InitializeConfig()
+    ECB:CreateMinimapButton()
 
     -- Apply the saved settings so buttons reflect the persisted size/spacing
     -- from the moment they first appear on screen.
     ECB:ApplySettings(ECB.db)
 
-    -- Print startup messages.
-    local version = C_AddOns.GetAddOnMetadata(addonName, "Version") or "?"
-    print("|cff00ff00Easy Chat Channel Buttons|r v" .. version .. " loaded.")
-
-    local isLocked = ECB_DB.locked ~= false
-    if isLocked then
-        print("|cff00ff00Easy Chat Channel Buttons:|r Frame is |cffc0c0c0locked|r. Use |cffffcc00/ecb unlock|r to move it.")
-    else
-        print("|cff00ff00Easy Chat Channel Buttons:|r Frame is |cffffff00unlocked|r. Drag to reposition, then |cffffcc00/ecb lock|r.")
-    end
+    -- Print startup message.
+    local version  = C_AddOns.GetAddOnMetadata(addonName, "Version") or "?"
+    local lockHint = (ECB_DB.locked ~= false)
+        and "|cffc0c0c0locked|r (|cffffcc00/ecb unlock|r to move)"
+        or  "|cffffff00unlocked|r (|cffffcc00/ecb lock|r when done)"
+    print("|cff00ff00Easy Chat Channel Buttons|r v" .. version .. " loaded \226\128\147 frame " .. lockHint .. ".")
 end
 
 -------------------------------------------------------------------------------

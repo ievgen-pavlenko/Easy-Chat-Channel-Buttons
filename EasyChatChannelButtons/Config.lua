@@ -1,6 +1,7 @@
 ﻿local addonName, ns = ...
 local ECB = ns.ECB
 local C = ns.Constants
+local floor = math.floor
 
 -- Guard: set to true while sliders are being synchronised programmatically
 -- (ApplyDefaults, OnShow, OpenConfig).  Prevents OnValueChanged from writing
@@ -169,7 +170,7 @@ end
 -- ECB_DB is never touched here.
 -------------------------------------------------------------------------------
 local function OnSizeChanged(self, rawVal)
-    local val = math.floor(rawVal + 0.5)
+    local val = floor(rawVal + 0.5)
     self._valueLabel:SetText(tostring(val))  -- always keep readout in sync
     if updating then return end
     ECB.workingCopy.bubbleSize = val
@@ -177,7 +178,7 @@ local function OnSizeChanged(self, rawVal)
 end
 
 local function OnSpacingChanged(self, rawVal)
-    local val = math.floor(rawVal + 0.5)
+    local val = floor(rawVal + 0.5)
     self._valueLabel:SetText(tostring(val))  -- always keep readout in sync
     if updating then return end
     ECB.workingCopy.bubbleSpacing = val
@@ -270,6 +271,23 @@ function ECB:CreateBlizzardConfig()
         ApplyDefaults(sizeSlider, spacingSlider, verticalCheck)
     end)
 
+    local lockBtn = CreateDarkButton(panel, 90, 22, "")
+    lockBtn:SetPoint("LEFT", defaultsBtn, "RIGHT", 8, 0)
+
+    local function RefreshLockButton()
+        local locked = (ECB_DB.locked ~= false)
+        lockBtn._label:SetText(locked and "Unlock" or "Lock")
+    end
+
+    lockBtn:SetScript("OnClick", function()
+        if ECB_DB.locked ~= false then
+            ECB:UnlockFrame()
+        else
+            ECB:LockFrame()
+        end
+        RefreshLockButton()
+    end)
+
     panel._sizeSlider    = sizeSlider
     panel._spacingSlider = spacingSlider
     panel._verticalCheck = verticalCheck
@@ -283,6 +301,7 @@ function ECB:CreateBlizzardConfig()
         spacingSlider:SetValue(ECB.workingCopy.bubbleSpacing)
         verticalCheck:SetChecked(ECB.workingCopy.vertical)
         updating = false
+        RefreshLockButton()
     end)
 
     -- Blizzard panel lifecycle callbacks (called by the game, not by us).

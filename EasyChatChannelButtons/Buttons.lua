@@ -191,8 +191,7 @@ end
 -------------------------------------------------------------------------------
 function ECB:UpdateButtonVisibility()
     for i, btn in ipairs(self.buttons) do
-        local ok, shouldShow = pcall(C.CHANNELS[i].visible)
-        if ok and shouldShow then btn:Show() else btn:Hide() end
+        if C.CHANNELS[i].visible() then btn:Show() else btn:Hide() end
     end
     self:RefreshButtons()
 end
