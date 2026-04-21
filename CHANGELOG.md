@@ -1,4 +1,8 @@
 # Changelog
+## [1.0.8] - 2026-04-21
+### Fixed
+- Fixed a load error that occurred on addon reload and when entering the world
+
 ## [1.0.7] - 2026-04-20
 ### Added
 - Minimap button — appears in the standard minimap addon button list; left-click opens the config panel
