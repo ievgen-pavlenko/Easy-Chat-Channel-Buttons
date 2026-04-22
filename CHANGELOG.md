@@ -1,4 +1,8 @@
 # Changelog
+## [1.0.9] - 2026-04-22
+### Changed
+- Added support for WoW interface version 12.0.5
+
 ## [1.0.8] - 2026-04-21
 ### Fixed
 - Fixed a load error that occurred on addon reload and when entering the world
