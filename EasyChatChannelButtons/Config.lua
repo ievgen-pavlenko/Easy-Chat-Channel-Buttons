@@ -193,13 +193,16 @@ end
 -- the per-slider OnValueChanged handlers don't each trigger a layout pass.
 -- A single ECB:ApplySettings call at the end applies all values at once.
 -------------------------------------------------------------------------------
-local function ApplyDefaults(sizeSlider, spacingSlider, verticalCheck)
+local function ApplyDefaults(sizeSlider, spacingSlider, verticalCheck, channelCheckboxes)
     local d = ECB:GetDefaults()   -- fresh CopyTable of ECB.defaults
     ECB.workingCopy = d
     updating = true
     sizeSlider:SetValue(d.bubbleSize)       -- updates thumb + label; skips pipeline
     spacingSlider:SetValue(d.bubbleSpacing) -- updates thumb + label; skips pipeline
     verticalCheck:SetChecked(d.vertical)    -- syncs checkbox; skips pipeline
+    for _, cb in pairs(channelCheckboxes) do
+        cb:SetChecked(false)                -- default: no channels hidden
+    end
     updating = false
     ECB:ApplySettings(ECB.workingCopy)      -- single layout pass with all values
 end
@@ -265,10 +268,35 @@ function ECB:CreateBlizzardConfig()
         ECB:ApplySettings(ECB.workingCopy)
     end)
 
+    -- Channel visibility section
+    local visHeader = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    visHeader:SetPoint("TOPLEFT", verticalCheck, "BOTTOMLEFT", 0, -22)
+    visHeader:SetText("Hide Channels")
+
+    local channelCheckboxes = {}
+    local prevCbAnchor  = visHeader
+    local prevCbOffsetY = -8
+    for _, ch in ipairs(C.CHANNELS) do
+        local cb = CreateLabeledCheckbox(panel, ch.tooltip, prevCbAnchor, prevCbOffsetY)
+        local key = ch.key
+        cb:SetScript("OnClick", function(self)
+            if updating then return end
+            if self:GetChecked() then
+                ECB.workingCopy.hiddenChannels[key] = true
+            else
+                ECB.workingCopy.hiddenChannels[key] = nil
+            end
+            ECB:ApplySettings(ECB.workingCopy)
+        end)
+        channelCheckboxes[key] = cb
+        prevCbAnchor  = cb
+        prevCbOffsetY = -4
+    end
+
     local defaultsBtn = CreateDarkButton(panel, 90, 22, "Defaults")
-    defaultsBtn:SetPoint("TOPLEFT", verticalCheck, "BOTTOMLEFT", 0, -16)
+    defaultsBtn:SetPoint("TOPLEFT", prevCbAnchor, "BOTTOMLEFT", 0, -16)
     defaultsBtn:SetScript("OnClick", function()
-        ApplyDefaults(sizeSlider, spacingSlider, verticalCheck)
+        ApplyDefaults(sizeSlider, spacingSlider, verticalCheck, channelCheckboxes)
     end)
 
     local lockBtn = CreateDarkButton(panel, 90, 22, "")
@@ -288,9 +316,10 @@ function ECB:CreateBlizzardConfig()
         RefreshLockButton()
     end)
 
-    panel._sizeSlider    = sizeSlider
-    panel._spacingSlider = spacingSlider
-    panel._verticalCheck = verticalCheck
+    panel._sizeSlider        = sizeSlider
+    panel._spacingSlider     = spacingSlider
+    panel._verticalCheck     = verticalCheck
+    panel._channelCheckboxes = channelCheckboxes
 
     -- OnShow: seed model and sync sliders under the updating guard.
     panel:SetScript("OnShow", function()
@@ -300,6 +329,10 @@ function ECB:CreateBlizzardConfig()
         sizeSlider:SetValue(ECB.workingCopy.bubbleSize)
         spacingSlider:SetValue(ECB.workingCopy.bubbleSpacing)
         verticalCheck:SetChecked(ECB.workingCopy.vertical)
+        local hidden = ECB.workingCopy.hiddenChannels or {}
+        for key, cb in pairs(channelCheckboxes) do
+            cb:SetChecked(hidden[key] and true or false)
+        end
         updating = false
         RefreshLockButton()
     end)
@@ -307,7 +340,7 @@ function ECB:CreateBlizzardConfig()
     -- Blizzard panel lifecycle callbacks (called by the game, not by us).
     panel.okay    = function() CommitWorkingCopy() end
     panel.cancel  = function() CancelEditing()     end
-    panel.default = function() ApplyDefaults(sizeSlider, spacingSlider, verticalCheck) end
+    panel.default = function() ApplyDefaults(sizeSlider, spacingSlider, verticalCheck, channelCheckboxes) end
 
     -- Register with the Retail / Midnight Settings API; fall back for older clients.
     if Settings and Settings.RegisterCanvasLayoutCategory then
@@ -365,6 +398,12 @@ function ECB:OpenConfig()
     if ui._sizeSlider    then ui._sizeSlider:SetValue(self.workingCopy.bubbleSize)       end
     if ui._spacingSlider then ui._spacingSlider:SetValue(self.workingCopy.bubbleSpacing) end
     if ui._verticalCheck then ui._verticalCheck:SetChecked(self.workingCopy.vertical)    end
+    if ui._channelCheckboxes then
+        local hidden = self.workingCopy.hiddenChannels or {}
+        for key, cb in pairs(ui._channelCheckboxes) do
+            cb:SetChecked(hidden[key] and true or false)
+        end
+    end
     updating = false
 
     -- Open Blizzard Interface Options to this addon's panel.

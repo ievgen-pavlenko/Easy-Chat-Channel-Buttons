@@ -13,9 +13,11 @@ ns.ECB = ECB
 -- Defaults
 -------------------------------------------------------------------------------
 ECB.defaults = {
-    bubbleSize    = 10,
-    bubbleSpacing = 7,
-    vertical      = false,
+    bubbleSize     = 10,
+    bubbleSpacing  = 7,
+    vertical       = false,
+    barHidden      = false,
+    hiddenChannels = {},
 }
 
 -------------------------------------------------------------------------------
@@ -35,7 +37,9 @@ ECB.savedBeforeEdit = {}   -- snapshot taken when config opens; restored on Canc
 -------------------------------------------------------------------------------
 function ECB:CopyTable(src)
     local t = {}
-    for k, v in pairs(src) do t[k] = v end
+    for k, v in pairs(src) do
+        t[k] = type(v) == "table" and self:CopyTable(v) or v
+    end
     return t
 end
 
@@ -72,8 +76,10 @@ function ECB:InitializeDatabase()
 
     -- Backfill any missing key and mirror into ECB.db in one pass.
     for k, v in pairs(self.defaults) do
-        if ECB_DB[k] == nil then ECB_DB[k] = v end
-        self.db[k] = ECB_DB[k]
+        if ECB_DB[k] == nil then
+            ECB_DB[k] = type(v) == "table" and self:CopyTable(v) or v
+        end
+        self.db[k] = type(ECB_DB[k]) == "table" and self:CopyTable(ECB_DB[k]) or ECB_DB[k]
     end
 end
 
@@ -95,6 +101,11 @@ local function OnLogin()
     ECB:CreateMainFrame()
     ECB:InitializeConfig()
     ECB:CreateMinimapButton()
+
+    -- Restore saved bar visibility (right-click minimap button toggles this).
+    if ECB_DB.barHidden and ECB.mainFrame then
+        ECB.mainFrame:Hide()
+    end
 
     -- Apply the saved settings so buttons reflect the persisted size/spacing
     -- from the moment they first appear on screen.

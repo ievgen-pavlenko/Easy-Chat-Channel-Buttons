@@ -1,4 +1,10 @@
 # Changelog
+## [1.0.10] - 2026-04-27
+### Added
+- Right-clicking the minimap button now shows or hides the button bar; the state is remembered across sessions
+- Two new channel buttons: **Emote** (`/em`) and **Battleground** (`/bg`)
+- Per-channel visibility overrides: a "Hide Channels" section in the config panel lets players permanently suppress any individual channel button (e.g. Yell, Officer) regardless of game state
+
 ## [1.0.9] - 2026-04-22
 ### Changed
 - Added support for WoW interface version 12.0.5

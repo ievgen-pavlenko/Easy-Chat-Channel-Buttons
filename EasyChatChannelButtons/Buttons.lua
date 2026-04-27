@@ -185,6 +185,24 @@ function ECB:RefreshButtons()
 end
 
 -------------------------------------------------------------------------------
+-- ECB:ToggleBarVisibility
+-- Shows or hides the main button bar and persists the state so it survives
+-- reloads.  Bound to right-click on the minimap button.
+-------------------------------------------------------------------------------
+function ECB:ToggleBarVisibility()
+    if not self.mainFrame then return end
+    if self.mainFrame:IsShown() then
+        self.mainFrame:Hide()
+        ECB_DB.barHidden = true
+        self.db.barHidden = true
+    else
+        self.mainFrame:Show()
+        ECB_DB.barHidden = false
+        self.db.barHidden = false
+    end
+end
+
+-------------------------------------------------------------------------------
 -- ECB:UpdateButtonVisibility
 -- Evaluates each channel's visible predicate and shows/hides the matching
 -- button, then reflows the layout so there are no gaps.
@@ -228,9 +246,10 @@ end
 -- Does NOT write to ECB_DB — persistence is the caller's responsibility.
 -------------------------------------------------------------------------------
 function ECB:ApplySettings(settings)
-    self.db.bubbleSize    = settings.bubbleSize
-    self.db.bubbleSpacing = settings.bubbleSpacing
-    self.db.vertical      = settings.vertical
+    self.db.bubbleSize     = settings.bubbleSize
+    self.db.bubbleSpacing  = settings.bubbleSpacing
+    self.db.vertical       = settings.vertical
+    self.db.hiddenChannels = settings.hiddenChannels or {}
     -- UpdateButtonVisibility re-checks show/hide predicates and then calls
     -- RefreshButtons, so size, spacing, visibility, and layout are all updated
     -- in one pass.

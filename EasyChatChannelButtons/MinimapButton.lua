@@ -8,6 +8,7 @@ local C = ns.Constants
 -- LibDataBroker-1.1 + LibDBIcon-1.0.
 --
 -- Left-click  → opens the config panel
+-- Right-click → toggles the button bar visibility
 -- The button position/visibility is managed entirely by LibDBIcon, so it
 -- works correctly with both the round Blizzard minimap and square ElvUI /
 -- other replacements, and respects the user's "hide minimap addon buttons"
@@ -37,6 +38,8 @@ function ECB:CreateMinimapButton()
         OnClick = function(_, button)
             if button == "LeftButton" then
                 ECB:OpenConfig()
+            elseif button == "RightButton" then
+                ECB:ToggleBarVisibility()
             end
         end,
 
@@ -44,6 +47,7 @@ function ECB:CreateMinimapButton()
             tooltip:AddLine(C.ADDON_DISPLAY)
             tooltip:AddLine(" ")
             tooltip:AddLine("|cffccccccLeft-click|r to open settings", 1, 1, 1)
+            tooltip:AddLine("|cffccccccRight-click|r to show/hide the button bar", 1, 1, 1)
         end,
     })
 
