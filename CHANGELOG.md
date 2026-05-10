@@ -1,4 +1,8 @@
 # Changelog
+## [1.0.12] - 2026-05-10
+### Fixed
+- Button size and spacing settings are now saved correctly and no longer reset after logging out or reloading the UI
+
 ## [1.0.11] - 2026-05-10
 ### Added
 - Active channel indicator: while the chat box is open, the button for the currently active channel is highlighted with a bright ring; other buttons dim slightly. The highlight updates instantly when cycling through channels and disappears when the chat box closes.

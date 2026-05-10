@@ -167,13 +167,15 @@ end
 -- actually dragging the slider ('updating' is false).  Programmatic SetValue
 -- callers set the guard to avoid spurious intermediate layout passes.
 --
--- ECB_DB is never touched here.
+-- ECB_DB is also written here so that settings persist even when the new
+-- Settings API (Settings.RegisterCanvasLayoutCategory) does not call panel.okay.
 -------------------------------------------------------------------------------
 local function OnSizeChanged(self, rawVal)
     local val = floor(rawVal + 0.5)
     self._valueLabel:SetText(tostring(val))  -- always keep readout in sync
     if updating then return end
     ECB.workingCopy.bubbleSize = val
+    ECB_DB.bubbleSize = val
     ECB:ApplySettings(ECB.workingCopy)
 end
 
@@ -182,6 +184,7 @@ local function OnSpacingChanged(self, rawVal)
     self._valueLabel:SetText(tostring(val))  -- always keep readout in sync
     if updating then return end
     ECB.workingCopy.bubbleSpacing = val
+    ECB_DB.bubbleSpacing = val
     ECB:ApplySettings(ECB.workingCopy)
 end
 
@@ -229,6 +232,15 @@ end
 local function CancelEditing()
     ECB.workingCopy = ECB:CopyTable(ECB.savedBeforeEdit)
     ECB:ApplySettings(ECB.savedBeforeEdit)
+    -- Restore ECB_DB to the pre-open snapshot so that any changes written
+    -- by the auto-save handlers above are rolled back on Cancel.
+    for k, v in pairs(ECB.savedBeforeEdit) do
+        if type(v) == "table" then
+            ECB_DB[k] = ECB:CopyTable(v)
+        else
+            ECB_DB[k] = v
+        end
+    end
 end
 
 -------------------------------------------------------------------------------
@@ -264,7 +276,9 @@ function ECB:CreateBlizzardConfig()
     local verticalCheck = CreateLabeledCheckbox(panel, "Vertical layout", spacingSlider, -30)
     verticalCheck:SetScript("OnClick", function(self)
         if updating then return end
-        ECB.workingCopy.vertical = self:GetChecked()
+        local checked = self:GetChecked()
+        ECB.workingCopy.vertical = checked
+        ECB_DB.vertical = checked
         ECB:ApplySettings(ECB.workingCopy)
     end)
 
@@ -283,8 +297,10 @@ function ECB:CreateBlizzardConfig()
             if updating then return end
             if self:GetChecked() then
                 ECB.workingCopy.hiddenChannels[key] = true
+                ECB_DB.hiddenChannels[key] = true
             else
                 ECB.workingCopy.hiddenChannels[key] = nil
+                ECB_DB.hiddenChannels[key] = nil
             end
             ECB:ApplySettings(ECB.workingCopy)
         end)
