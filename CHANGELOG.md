@@ -1,4 +1,8 @@
 # Changelog
+## [1.0.11] - 2026-05-10
+### Added
+- Active channel indicator: while the chat box is open, the button for the currently active channel is highlighted with a bright ring; other buttons dim slightly. The highlight updates instantly when cycling through channels and disappears when the chat box closes.
+
 ## [1.0.10] - 2026-04-27
 ### Added
 - Right-clicking the minimap button now shows or hides the button bar; the state is remembered across sessions

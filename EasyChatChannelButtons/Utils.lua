@@ -1,6 +1,4 @@
 ﻿local addonName, ns = ...
-local ECB = ns.ECB
-local C = ns.Constants
 
 -------------------------------------------------------------------------------
 -- EasyChatChannelButtons – Utils

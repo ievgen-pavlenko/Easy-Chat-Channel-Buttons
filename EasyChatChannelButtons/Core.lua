@@ -26,6 +26,7 @@ ECB.defaults = {
 ECB.mainFrame       = nil
 ECB.buttons         = {}
 ECB.ElvUIE          = nil  -- resolved at PLAYER_LOGIN
+ECB.activeChatType  = nil  -- set by ChatEdit hooks; drives UpdateActiveIndicator
 
 -- Config working copies
 ECB.db              = {}   -- runtime settings (mirrors ECB_DB)
@@ -102,6 +103,45 @@ local function OnLogin()
     ECB:InitializeConfig()
     ECB:CreateMinimapButton()
 
+    -- Active-channel indicator hooks.
+    -- OnAttributeChanged is the primary hook: it fires on every
+    -- SetAttribute("chatType", ...) call regardless of code path (slash
+    -- commands like /s /g, Tab cycling, SwitchChatType, etc.).
+    -- ChatEdit_UpdateHeader is NOT hooked: OnAttributeChanged already fires
+    -- for every path that calls it, so hooking both would call
+    -- UpdateActiveIndicator twice per switch.
+    for i = 1, NUM_CHAT_WINDOWS do
+        local editBox = _G["ChatFrame" .. i .. "EditBox"]
+        if editBox then
+            -- Pre-allocate the OnShow timer closure once per editBox so each
+            -- open event reuses the same function object instead of creating
+            -- a new closure and putting pressure on the GC.
+            local function onShowDeferred()
+                if not ECB.mainFrame or not editBox:IsVisible() then return end
+                ECB.activeChatType = editBox:GetAttribute("chatType")
+                ECB:UpdateActiveIndicator()
+            end
+
+            editBox:HookScript("OnAttributeChanged", function(_, name, value)
+                if name ~= "chattype" then return end  -- attribute names are lower-case
+                if not ECB.mainFrame or not editBox:IsVisible() then return end
+                ECB.activeChatType = value
+                ECB:UpdateActiveIndicator()
+            end)
+            -- OnShow with a one-frame defer so Blizzard finishes setting
+            -- chatType before we read it (avoids the stale-previous-channel bug).
+            editBox:HookScript("OnShow", function()
+                C_Timer.After(0, onShowDeferred)
+            end)
+            -- OnHide clears the indicator when the box closes.
+            editBox:HookScript("OnHide", function()
+                if not ECB.mainFrame then return end
+                ECB.activeChatType = nil
+                ECB:UpdateActiveIndicator()
+            end)
+        end
+    end
+
     -- Restore saved bar visibility (right-click minimap button toggles this).
     if ECB_DB.barHidden and ECB.mainFrame then
         ECB.mainFrame:Hide()
@@ -117,6 +157,24 @@ local function OnLogin()
         and "|cffc0c0c0locked|r (|cffffcc00/ecb unlock|r to move)"
         or  "|cffffff00unlocked|r (|cffffcc00/ecb lock|r when done)"
     print("|cff00ff00Easy Chat Channel Buttons|r v" .. version .. " loaded \226\128\147 frame " .. lockHint .. ".")
+
+    -- Initial active-channel sync: if an edit box is already visible at login
+    -- (e.g. the UI loaded mid-session), neither OnShow nor ChatEdit_UpdateHeader
+    -- will fire, so we check the current state once after everything is ready.
+    C_Timer.After(0, function()
+        if not ECB.mainFrame then return end
+        for i = 1, NUM_CHAT_WINDOWS do
+            local editBox = _G["ChatFrame" .. i .. "EditBox"]
+            if editBox and editBox:IsVisible() then
+                ECB.activeChatType = editBox:GetAttribute("chatType")
+                ECB:UpdateActiveIndicator()
+                return
+            end
+        end
+        -- No edit box open — ensure all rings/dimming are cleared.
+        ECB.activeChatType = nil
+        ECB:UpdateActiveIndicator()
+    end)
 end
 
 -------------------------------------------------------------------------------

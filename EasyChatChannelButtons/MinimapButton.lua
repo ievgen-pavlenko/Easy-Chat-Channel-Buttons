@@ -22,7 +22,6 @@ local C = ns.Constants
 -- (e.g. during local dev before running the packager).
 -------------------------------------------------------------------------------
 function ECB:CreateMinimapButton()
-    local LibStub     = LibStub
     if not LibStub then return end
 
     local LDB  = LibStub("LibDataBroker-1.1", true)

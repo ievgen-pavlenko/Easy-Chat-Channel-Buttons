@@ -338,8 +338,8 @@ function ECB:CreateBlizzardConfig()
     end)
 
     -- Blizzard panel lifecycle callbacks (called by the game, not by us).
-    panel.okay    = function() CommitWorkingCopy() end
-    panel.cancel  = function() CancelEditing()     end
+    panel.okay    = CommitWorkingCopy
+    panel.cancel  = CancelEditing
     panel.default = function() ApplyDefaults(sizeSlider, spacingSlider, verticalCheck, channelCheckboxes) end
 
     -- Register with the Retail / Midnight Settings API; fall back for older clients.

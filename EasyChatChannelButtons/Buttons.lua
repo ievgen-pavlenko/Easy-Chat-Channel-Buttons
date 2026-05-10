@@ -113,6 +113,20 @@ local function CreateChannelButton(parent, channelDef)
         btn._glow = glow
     end
 
+    -- Active-channel indicator ring.
+    -- Sits at the same BACKGROUND sub-level as the glow but is created after
+    -- it, so it renders on top of the glow within that sub-level.
+    -- The ring is 4 px wider/taller than the button; the opaque bg circle
+    -- (at sub-level 0) covers its centre, leaving a 2 px bright white rim
+    -- that peeks out around the edge.  Hidden until this channel is active.
+    local ring = btn:CreateTexture(nil, "BACKGROUND", nil, -1)
+    ring:SetPoint("TOPLEFT",     btn, "TOPLEFT",     -2,  2)
+    ring:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT",  2, -2)
+    ring:SetColorTexture(1, 1, 1, 0.9)
+    AddCircleMask(ring, btn)
+    ring:Hide()
+    btn._ring = ring
+
     -- Main fill: the only opaque art layer.
     local bg = btn:CreateTexture(nil, "BACKGROUND", nil, 0)
     bg:SetAllPoints()
@@ -227,6 +241,34 @@ function ECB:UpdateButtonColors()
             btn._bg:SetColorTexture(r, g, b, 1)
             if btn._glow then btn._glow:SetColorTexture(r, g, b, 0.35) end
         end
+    end
+end
+
+-------------------------------------------------------------------------------
+-- ECB:UpdateActiveIndicator
+-- Shows the bright ring on the button whose chatType matches the currently
+-- active edit-box channel, and hides it on all others.  Safe to call when
+-- no edit box is open (activeChatType is nil → all rings hidden).
+-------------------------------------------------------------------------------
+function ECB:UpdateActiveIndicator()
+    local activeChatType = self.activeChatType  -- plain field read, no method call
+    local chatBoxOpen    = activeChatType ~= nil
+    local inactiveAlpha  = chatBoxOpen and 0.5 or 1.0
+    local buttons        = self.buttons
+    for i = 1, #buttons do
+        local btn      = buttons[i]
+        local isActive = chatBoxOpen
+                      and btn._channelDef
+                      and btn._channelDef.chatType == activeChatType
+
+        -- Ring texture: visible only on the active button.
+        if btn._ring then
+            if isActive then btn._ring:Show() else btn._ring:Hide() end
+        end
+
+        -- Alpha: active button stays at full opacity; others dim slightly
+        -- while the chat box is open so the active channel stands out.
+        btn:SetAlpha(isActive and 1.0 or inactiveAlpha)
     end
 end
 
