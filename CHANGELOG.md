@@ -1,4 +1,7 @@
 # Changelog
+## [1.0.13] - 2026-05-12
+- Fix version
+
 ## [1.0.12] - 2026-05-10
 ### Fixed
 - Button size and spacing settings are now saved correctly and no longer reset after logging out or reloading the UI
