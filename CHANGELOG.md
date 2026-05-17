@@ -1,4 +1,8 @@
 # Changelog
+## [1.0.14] - 2026-05-17
+### Fixed
+- Added support for WoW interface version 12.0.7
+
 ## [1.0.13] - 2026-05-12
 - Fix version
 
