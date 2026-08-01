@@ -318,6 +318,24 @@ function ECB:CreateBlizzardConfig()
     local lockBtn = CreateDarkButton(panel, 90, 22, "")
     lockBtn:SetPoint("LEFT", defaultsBtn, "RIGHT", 8, 0)
 
+    local resetBtn = CreateDarkButton(panel, 110, 22, "Reset Position")
+    resetBtn:SetPoint("LEFT", lockBtn, "RIGHT", 8, 0)
+    resetBtn:SetScript("OnClick", function()
+        -- Clear persisted custom position and re-anchor to default above ChatFrame1Tab
+        ECB_DB.x = nil
+        ECB_DB.y = nil
+        if ECB.mainFrame then
+            ECB.mainFrame:ClearAllPoints()
+            if ChatFrame1Tab then
+                ECB.mainFrame:SetPoint("BOTTOMLEFT", ChatFrame1Tab, "TOPLEFT", 25, ECB.db.bubbleSpacing)
+            else
+                -- fallback to screen center if ChatFrame1Tab missing
+                ECB.mainFrame:SetPoint("CENTER", UIParent, "CENTER")
+            end
+        end
+        print("|cff00ff00EasyChatChannelButtons:|r Position reset to default.")
+    end)
+
     local function RefreshLockButton()
         local locked = (ECB_DB.locked ~= false)
         lockBtn._label:SetText(locked and "Unlock" or "Lock")

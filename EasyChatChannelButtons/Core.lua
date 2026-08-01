@@ -123,7 +123,8 @@ local function OnLogin()
             end
 
             editBox:HookScript("OnAttributeChanged", function(_, name, value)
-                if name ~= "chattype" then return end  -- attribute names are lower-case
+                local attr = tostring(name):lower()
+                if attr ~= "chattype" then return end  -- attribute names are lower-case
                 if not ECB.mainFrame or not editBox:IsVisible() then return end
                 ECB.activeChatType = value
                 ECB:UpdateActiveIndicator()
@@ -131,7 +132,12 @@ local function OnLogin()
             -- OnShow with a one-frame defer so Blizzard finishes setting
             -- chatType before we read it (avoids the stale-previous-channel bug).
             editBox:HookScript("OnShow", function()
-                C_Timer.After(0, onShowDeferred)
+                if C_Timer and C_Timer.After then
+                    C_Timer.After(0, onShowDeferred)
+                else
+                    -- Fallback: call immediately if C_Timer is not available
+                    onShowDeferred()
+                end
             end)
             -- OnHide clears the indicator when the box closes.
             editBox:HookScript("OnHide", function()
@@ -152,7 +158,15 @@ local function OnLogin()
     ECB:ApplySettings(ECB.db)
 
     -- Print startup message.
-    local version  = C_AddOns.GetAddOnMetadata(addonName, "Version") or "?"
+    local function _GetAddonVersion(name)
+        if C_AddOns and C_AddOns.GetAddOnMetadata then
+            return C_AddOns.GetAddOnMetadata(name, "Version")
+        elseif GetAddOnMetadata then
+            return GetAddOnMetadata(name, "Version")
+        end
+        return nil
+    end
+    local version = _GetAddonVersion(addonName) or "?"
     local lockHint = (ECB_DB.locked ~= false)
         and "|cffc0c0c0locked|r (|cffffcc00/ecb unlock|r to move)"
         or  "|cffffff00unlocked|r (|cffffcc00/ecb lock|r when done)"
@@ -161,20 +175,42 @@ local function OnLogin()
     -- Initial active-channel sync: if an edit box is already visible at login
     -- (e.g. the UI loaded mid-session), neither OnShow nor ChatEdit_UpdateHeader
     -- will fire, so we check the current state once after everything is ready.
-    C_Timer.After(0, function()
-        if not ECB.mainFrame then return end
-        for i = 1, NUM_CHAT_WINDOWS do
-            local editBox = _G["ChatFrame" .. i .. "EditBox"]
-            if editBox and editBox:IsVisible() then
-                ECB.activeChatType = editBox:GetAttribute("chatType")
+    if C_Timer and C_Timer.After then
+        C_Timer.After(0, function()
+            if not ECB.mainFrame then return end
+            for i = 1, NUM_CHAT_WINDOWS do
+                local editBox = _G["ChatFrame" .. i .. "EditBox"]
+                if editBox and editBox:IsVisible() then
+                    ECB.activeChatType = editBox:GetAttribute("chatType")
+                    ECB:UpdateActiveIndicator()
+                    return
+                end
+            end
+            -- No edit box open — ensure all rings/dimming are cleared.
+            ECB.activeChatType = nil
+            ECB:UpdateActiveIndicator()
+        end)
+    else
+        -- Fallback: execute immediately if C_Timer is unavailable
+        if not ECB.mainFrame then
+            -- nothing to do
+        else
+            local found = false
+            for i = 1, NUM_CHAT_WINDOWS do
+                local editBox = _G["ChatFrame" .. i .. "EditBox"]
+                if editBox and editBox:IsVisible() then
+                    ECB.activeChatType = editBox:GetAttribute("chatType")
+                    ECB:UpdateActiveIndicator()
+                    found = true
+                    break
+                end
+            end
+            if not found then
+                ECB.activeChatType = nil
                 ECB:UpdateActiveIndicator()
-                return
             end
         end
-        -- No edit box open — ensure all rings/dimming are cleared.
-        ECB.activeChatType = nil
-        ECB:UpdateActiveIndicator()
-    end)
+    end
 end
 
 -------------------------------------------------------------------------------

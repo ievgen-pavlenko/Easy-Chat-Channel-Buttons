@@ -1,4 +1,10 @@
 # Changelog
+
+## [1.0.15] - 2026-08-01
+- Added support for World of Warcraft Retail 12.1.0
+- Improved drag and positioning usability for the button bar
+- Added "Reset Position" option in settings to restore the bar to its default location
+
 ## [1.0.14] - 2026-05-17
 ### Fixed
 - Added support for WoW interface version 12.0.7

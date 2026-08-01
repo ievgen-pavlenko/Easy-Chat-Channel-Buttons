@@ -327,11 +327,58 @@ function ECB:CreateMainFrame()
     f:SetFrameLevel(100)
 
     -- Semi-transparent yellow background visible only when the frame is unlocked.
+    local padding = 6
     local dragBg = f:CreateTexture(nil, "BACKGROUND", nil, -2)
-    dragBg:SetAllPoints()
+    dragBg:SetPoint("TOPLEFT", f, "TOPLEFT", -padding, padding)
+    dragBg:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", padding, -padding)
     dragBg:SetColorTexture(1, 0.8, 0, 0.25)
     dragBg:Hide()
     f._dragBg = dragBg
+
+    -- Make the visible drag background handle mouse dragging as a fallback
+    -- for clients or UI setups where the frame itself does not receive drag.
+    -- Enabled only when the background is shown (ApplyLockState controls visibility).
+    dragBg:EnableMouse(true)
+    dragBg:SetScript("OnMouseDown", function(self, button)
+        if ECB_DB.locked ~= false then return end
+        local parent = self:GetParent()
+        parent:StartMoving()
+    end)
+    dragBg:SetScript("OnMouseUp", function(self, button)
+        local parent = self:GetParent()
+        parent:StopMovingOrSizing()
+        -- Persist new position
+        local x, y = parent:GetLeft(), parent:GetBottom()
+        if x and y then
+            ECB_DB.x = x
+            ECB_DB.y = y
+        end
+    end)
+
+    -- Create an invisible drag handle frame that expands the clickable area
+    -- so the user can drag even when the main frame is small or empty.
+    local dragHandle = CreateFrame("Frame", nil, f)
+    dragHandle:SetPoint("TOPLEFT", f, "TOPLEFT", -padding, padding)
+    dragHandle:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", padding, -padding)
+    dragHandle:Hide()
+    dragHandle:EnableMouse(true)
+    dragHandle:SetScript("OnMouseDown", function(self, button)
+        if ECB_DB.locked ~= false then return end
+        if self:GetParent()._dragBg then
+            self:GetParent()._dragBg:SetColorTexture(1, 0.8, 0, 0.45)
+            self:GetParent()._dragBg:Show()
+        end
+        self:GetParent():StartMoving()
+    end)
+    dragHandle:SetScript("OnMouseUp", function(self, button)
+        local parent = self:GetParent()
+        parent:StopMovingOrSizing()
+        if parent._dragBg then
+            parent._dragBg:SetColorTexture(1, 0.8, 0, 0.25)
+        end
+        SavePosition()
+    end)
+    f._dragHandle = dragHandle
 
     self.mainFrame = f
 
