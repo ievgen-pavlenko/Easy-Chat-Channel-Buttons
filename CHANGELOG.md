@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.16] - 2026-08-13
+### Added
+- Added configurable quick-tag buttons for Discord role mentions and other one-click chat inserts
+- Tags can now be placed before or after the channel buttons and spaced independently from the main bubble layout
+- Each tag supports its own label, value, and color, and the settings are saved across sessions
+- Added import/export support for saving and sharing the tag list between characters or installs
+
 ## [1.0.15] - 2026-08-01
 - Added support for World of Warcraft Retail 12.1.0
 - Improved drag and positioning usability for the button bar

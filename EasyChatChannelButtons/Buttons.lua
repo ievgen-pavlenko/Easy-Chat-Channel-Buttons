@@ -156,6 +156,82 @@ local function CreateChannelButton(parent, channelDef)
 end
 
 -------------------------------------------------------------------------------
+-- ECB:GetQuickTagColor
+-------------------------------------------------------------------------------
+function ECB:GetQuickTagColor(tagDef)
+    if tagDef and tagDef.color then
+        local c = tagDef.color
+        if c.r and c.g and c.b then return c.r, c.g, c.b end
+    end
+    return 0.35, 0.75, 1.0
+end
+
+-------------------------------------------------------------------------------
+-- CreateQuickTagButton (module-private)
+-------------------------------------------------------------------------------
+local function CreateQuickTagButton(parent, tagDef)
+    local size = ECB.db.bubbleSize
+    local btn = CreateFrame("Button", nil, parent)
+    btn:SetSize(size, size)
+    btn:SetNormalTexture("")
+    btn:SetPushedTexture("")
+    btn:SetHighlightTexture("")
+    btn:SetDisabledTexture("")
+
+    local r, g, b = ECB:GetQuickTagColor(tagDef)
+    local bg = btn:CreateTexture(nil, "BACKGROUND", nil, 0)
+    bg:SetAllPoints()
+    bg:SetColorTexture(r, g, b, 1)
+    btn._bg = bg
+
+    local label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    label:SetPoint("CENTER", 0, 0)
+    label:SetText(tagDef.label or "")
+    label:SetJustifyH("CENTER")
+    label:SetJustifyV("MIDDLE")
+    btn._label = label
+
+    btn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:AddLine(tagDef.label or tagDef.value or "Quick Tag", 1, 1, 1)
+        if tagDef.value then
+            GameTooltip:AddLine(tagDef.value, 0.8, 0.8, 0.9)
+        end
+        GameTooltip:Show()
+    end)
+    btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    btn:SetScript("OnClick", function()
+        if tagDef.value and tagDef.value ~= "" then
+            ChatFrame_OpenChat(tagDef.value .. " ")
+        end
+    end)
+
+    return btn
+end
+
+-------------------------------------------------------------------------------
+-- ECB:RefreshQuickTagButtons
+-------------------------------------------------------------------------------
+function ECB:RefreshQuickTagButtons()
+    if not self.mainFrame then return end
+
+    for _, btn in ipairs(self.quickTagButtons) do
+        btn:Hide()
+        btn:SetParent(nil)
+    end
+    self.quickTagButtons = {}
+
+    for _, tagDef in ipairs(self.db.quickTags or {}) do
+        if tagDef and tagDef.enabled ~= false then
+            local btn = CreateQuickTagButton(self.mainFrame, tagDef)
+            table.insert(self.quickTagButtons, btn)
+        end
+    end
+
+    self:RefreshButtons()
+end
+
+-------------------------------------------------------------------------------
 -- ECB:RefreshButtons
 -- Resizes every button to the current bubbleSize, then reflows only the
 -- visible buttons horizontally (hidden buttons leave no gap).  The container
@@ -164,19 +240,19 @@ end
 function ECB:RefreshButtons()
     local size     = self.db.bubbleSize
     local spacing  = self.db.bubbleSpacing
+    local tagSpacing = self.db.tagSpacing or 0
     local vertical = self.db.vertical
-    local prev     = nil
-    local count    = 0
 
-    for _, btn in ipairs(self.buttons) do
-        btn:SetSize(size, size)
-        if btn:IsShown() then
+    local function layoutGroup(buttons, originX, originY)
+        local prev = nil
+        for _, btn in ipairs(buttons) do
+            btn:SetSize(size, size)
             btn:ClearAllPoints()
             if prev == nil then
                 if vertical then
-                    btn:SetPoint("TOP", self.mainFrame, "TOP", 0, 0)
+                    btn:SetPoint("TOP", self.mainFrame, "TOP", originX, originY)
                 else
-                    btn:SetPoint("LEFT", self.mainFrame, "LEFT", 0, 0)
+                    btn:SetPoint("LEFT", self.mainFrame, "LEFT", originX, originY)
                 end
             else
                 if vertical then
@@ -185,15 +261,69 @@ function ECB:RefreshButtons()
                     btn:SetPoint("LEFT", prev, "RIGHT", spacing, 0)
                 end
             end
-            prev  = btn
-            count = count + 1
+            prev = btn
         end
     end
 
-    local total = count > 0 and (count * size + (count - 1) * spacing) or 1
+    local visibleChannelButtons = {}
+    for _, btn in ipairs(self.buttons) do
+        if btn:IsShown() then table.insert(visibleChannelButtons, btn) end
+    end
+
+    local visibleTagButtons = {}
+    for _, btn in ipairs(self.quickTagButtons) do
+        if btn:IsShown() then table.insert(visibleTagButtons, btn) end
+    end
+
+    local channelCount = #visibleChannelButtons
+    local tagCount = #visibleTagButtons
+    local channelTotal = channelCount > 0 and (channelCount * size + (channelCount - 1) * spacing) or 0
+    local tagTotal = tagCount > 0 and (tagCount * size + (tagCount - 1) * spacing) or 0
+    local gap = (tagCount > 0 and channelCount > 0) and tagSpacing or 0
+
     if vertical then
+        local y = 0
+        if self.db.tagsBeforeChannels then
+            layoutGroup(visibleTagButtons, 0, 0)
+            if gap > 0 then y = tagTotal + gap end
+            if channelCount > 0 then
+                layoutGroup(visibleChannelButtons, 0, -y)
+            end
+        else
+            layoutGroup(visibleChannelButtons, 0, 0)
+            if gap > 0 then y = channelTotal + gap end
+            if tagCount > 0 then
+                layoutGroup(visibleTagButtons, 0, -y)
+            end
+        end
+
+        local total = 0
+        if tagCount > 0 then total = total + tagTotal end
+        if channelCount > 0 then total = total + channelTotal end
+        if gap > 0 then total = total + gap end
+        if total == 0 then total = size end
         self.mainFrame:SetSize(size, total)
     else
+        local x = 0
+        if self.db.tagsBeforeChannels then
+            layoutGroup(visibleTagButtons, 0, 0)
+            if gap > 0 then x = tagTotal + gap end
+            if channelCount > 0 then
+                layoutGroup(visibleChannelButtons, x, 0)
+            end
+        else
+            layoutGroup(visibleChannelButtons, 0, 0)
+            if gap > 0 then x = channelTotal + gap end
+            if tagCount > 0 then
+                layoutGroup(visibleTagButtons, x, 0)
+            end
+        end
+
+        local total = 0
+        if tagCount > 0 then total = total + tagTotal end
+        if channelCount > 0 then total = total + channelTotal end
+        if gap > 0 then total = total + gap end
+        if total == 0 then total = size end
         self.mainFrame:SetSize(total, size)
     end
 end
@@ -225,7 +355,7 @@ function ECB:UpdateButtonVisibility()
     for i, btn in ipairs(self.buttons) do
         if C.CHANNELS[i].visible() then btn:Show() else btn:Hide() end
     end
-    self:RefreshButtons()
+    self:RefreshQuickTagButtons()
 end
 
 -------------------------------------------------------------------------------
@@ -288,10 +418,14 @@ end
 -- Does NOT write to ECB_DB — persistence is the caller's responsibility.
 -------------------------------------------------------------------------------
 function ECB:ApplySettings(settings)
-    self.db.bubbleSize     = settings.bubbleSize
-    self.db.bubbleSpacing  = settings.bubbleSpacing
-    self.db.vertical       = settings.vertical
-    self.db.hiddenChannels = settings.hiddenChannels or {}
+    self.db.bubbleSize        = settings.bubbleSize
+    self.db.bubbleSpacing     = settings.bubbleSpacing
+    self.db.tagSpacing        = settings.tagSpacing or self.db.tagSpacing or 6
+    self.db.vertical          = settings.vertical
+    self.db.tagsBeforeChannels = settings.tagsBeforeChannels ~= false
+    self.db.hiddenChannels    = settings.hiddenChannels or {}
+    self.db.quickTags         = settings.quickTags or self.db.quickTags or {}
+    self:RefreshQuickTagButtons()
     -- UpdateButtonVisibility re-checks show/hide predicates and then calls
     -- RefreshButtons, so size, spacing, visibility, and layout are all updated
     -- in one pass.

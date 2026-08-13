@@ -13,11 +13,14 @@ ns.ECB = ECB
 -- Defaults
 -------------------------------------------------------------------------------
 ECB.defaults = {
-    bubbleSize     = 10,
-    bubbleSpacing  = 7,
-    vertical       = false,
-    barHidden      = false,
-    hiddenChannels = {},
+    bubbleSize         = 10,
+    bubbleSpacing      = 7,
+    tagSpacing         = 6,
+    vertical           = false,
+    tagsBeforeChannels = true,
+    barHidden          = false,
+    hiddenChannels     = {},
+    quickTags          = {},
 }
 
 -------------------------------------------------------------------------------
@@ -25,6 +28,7 @@ ECB.defaults = {
 -------------------------------------------------------------------------------
 ECB.mainFrame       = nil
 ECB.buttons         = {}
+ECB.quickTagButtons = {}
 ECB.ElvUIE          = nil  -- resolved at PLAYER_LOGIN
 ECB.activeChatType  = nil  -- set by ChatEdit hooks; drives UpdateActiveIndicator
 
@@ -82,6 +86,10 @@ function ECB:InitializeDatabase()
         end
         self.db[k] = type(ECB_DB[k]) == "table" and self:CopyTable(ECB_DB[k]) or ECB_DB[k]
     end
+
+    self.db.quickTags = self.db.quickTags or {}
+    ECB_DB.quickTags = ECB_DB.quickTags or self:CopyTable(self.db.quickTags)
+    self.db.quickTags = self:CopyTable(ECB_DB.quickTags)
 end
 
 -------------------------------------------------------------------------------

@@ -188,6 +188,15 @@ local function OnSpacingChanged(self, rawVal)
     ECB:ApplySettings(ECB.workingCopy)
 end
 
+local function OnTagSpacingChanged(self, rawVal)
+    local val = floor(rawVal + 0.5)
+    self._valueLabel:SetText(tostring(val))
+    if updating then return end
+    ECB.workingCopy.tagSpacing = val
+    ECB_DB.tagSpacing = val
+    ECB:ApplySettings(ECB.workingCopy)
+end
+
 -------------------------------------------------------------------------------
 -- ApplyDefaults (module-private)
 -- Resets ECB.workingCopy to the addon defaults and shows a live preview.
@@ -196,18 +205,20 @@ end
 -- the per-slider OnValueChanged handlers don't each trigger a layout pass.
 -- A single ECB:ApplySettings call at the end applies all values at once.
 -------------------------------------------------------------------------------
-local function ApplyDefaults(sizeSlider, spacingSlider, verticalCheck, channelCheckboxes)
+local function ApplyDefaults(sizeSlider, spacingSlider, tagSpacingSlider, verticalCheck, tagsBeforeCheck, channelCheckboxes)
     local d = ECB:GetDefaults()   -- fresh CopyTable of ECB.defaults
     ECB.workingCopy = d
     updating = true
-    sizeSlider:SetValue(d.bubbleSize)       -- updates thumb + label; skips pipeline
-    spacingSlider:SetValue(d.bubbleSpacing) -- updates thumb + label; skips pipeline
-    verticalCheck:SetChecked(d.vertical)    -- syncs checkbox; skips pipeline
+    sizeSlider:SetValue(d.bubbleSize)
+    spacingSlider:SetValue(d.bubbleSpacing)
+    tagSpacingSlider:SetValue(d.tagSpacing)
+    verticalCheck:SetChecked(d.vertical)
+    tagsBeforeCheck:SetChecked(d.tagsBeforeChannels)
     for _, cb in pairs(channelCheckboxes) do
-        cb:SetChecked(false)                -- default: no channels hidden
+        cb:SetChecked(false)
     end
     updating = false
-    ECB:ApplySettings(ECB.workingCopy)      -- single layout pass with all values
+    ECB:ApplySettings(ECB.workingCopy)
 end
 
 -------------------------------------------------------------------------------
@@ -269,16 +280,28 @@ function ECB:CreateBlizzardConfig()
         panel, C.SLIDER.bubbleSize, subtitle, -20, 220)
     local spacingSlider = CreateLabeledSlider(
         panel, C.SLIDER.bubbleSpacing, sizeSlider, -34, 220)
+    local tagSpacingSlider = CreateLabeledSlider(
+        panel, C.SLIDER.tagSpacing, spacingSlider, -34, 220)
 
     sizeSlider:SetScript("OnValueChanged",    OnSizeChanged)
     spacingSlider:SetScript("OnValueChanged", OnSpacingChanged)
+    tagSpacingSlider:SetScript("OnValueChanged", OnTagSpacingChanged)
 
-    local verticalCheck = CreateLabeledCheckbox(panel, "Vertical layout", spacingSlider, -30)
+    local verticalCheck = CreateLabeledCheckbox(panel, "Vertical layout", tagSpacingSlider, -30)
     verticalCheck:SetScript("OnClick", function(self)
         if updating then return end
         local checked = self:GetChecked()
         ECB.workingCopy.vertical = checked
         ECB_DB.vertical = checked
+        ECB:ApplySettings(ECB.workingCopy)
+    end)
+
+    local tagsBeforeCheck = CreateLabeledCheckbox(panel, "Quick tags before channels", verticalCheck, -8)
+    tagsBeforeCheck:SetScript("OnClick", function(self)
+        if updating then return end
+        local checked = self:GetChecked()
+        ECB.workingCopy.tagsBeforeChannels = checked
+        ECB_DB.tagsBeforeChannels = checked
         ECB:ApplySettings(ECB.workingCopy)
     end)
 
@@ -309,10 +332,196 @@ function ECB:CreateBlizzardConfig()
         prevCbOffsetY = -4
     end
 
+    local quickTagHeader = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    quickTagHeader:SetPoint("TOPLEFT", prevCbAnchor, "BOTTOMLEFT", 0, -18)
+    quickTagHeader:SetText("Quick Tags")
+
+    local tagLabelName = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    tagLabelName:SetPoint("TOPLEFT", quickTagHeader, "BOTTOMLEFT", 0, -10)
+    tagLabelName:SetText("Label")
+    local tagLabelBox = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+    tagLabelBox:SetSize(130, 24)
+    tagLabelBox:SetPoint("TOPLEFT", tagLabelName, "BOTTOMLEFT", 0, -4)
+    tagLabelBox:SetAutoFocus(false)
+
+    local tagValueName = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    tagValueName:SetPoint("LEFT", tagLabelBox, "RIGHT", 16, 0)
+    tagValueName:SetText("Value")
+    local tagValueBox = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+    tagValueBox:SetSize(220, 24)
+    tagValueBox:SetPoint("TOPLEFT", tagValueName, "BOTTOMLEFT", 0, -4)
+    tagValueBox:SetAutoFocus(false)
+
+    local tagColorName = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    tagColorName:SetPoint("TOPLEFT", tagLabelBox, "BOTTOMLEFT", 0, -18)
+    tagColorName:SetText("Color")
+    local tagColorBox = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+    tagColorBox:SetSize(120, 24)
+    tagColorBox:SetPoint("TOPLEFT", tagColorName, "BOTTOMLEFT", 0, -4)
+    tagColorBox:SetAutoFocus(false)
+    tagColorBox:SetText("#4aa3ff")
+
+    local function Trim(value)
+        return tostring(value or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    end
+
+    local function ParseHexColor(value)
+        local hex = Trim(value):gsub("#", "")
+        if #hex ~= 6 then return nil end
+        local r = tonumber("0x" .. hex:sub(1, 2))
+        local g = tonumber("0x" .. hex:sub(3, 4))
+        local b = tonumber("0x" .. hex:sub(5, 6))
+        if not r or not g or not b then return nil end
+        return { r = r / 255, g = g / 255, b = b / 255 }
+    end
+
+    local tagRows = {}
+    local editingTagIndex = nil
+    local function RefreshTagRows()
+        for _, row in ipairs(tagRows) do row:Hide() end
+
+        local tags = ECB.workingCopy.quickTags or {}
+        for i, tag in ipairs(tags) do
+            local row = tagRows[i]
+            if row == nil then
+                row = CreateFrame("Frame", nil, panel)
+                row:SetSize(420, 24)
+                row.label = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+                row.label:SetPoint("LEFT", 0, 0)
+                row.value = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                row.value:SetPoint("LEFT", 120, 0)
+                row.editBtn = CreateDarkButton(row, 44, 20, "Edit")
+                row.editBtn:SetPoint("LEFT", 310, 0)
+                row.deleteBtn = CreateDarkButton(row, 60, 20, "Delete")
+                row.deleteBtn:SetPoint("LEFT", 360, 0)
+                tagRows[i] = row
+            end
+
+            row.label:SetText(tag.label or "")
+            row.value:SetText((tag.value or ""):sub(1, 28))
+            row.editBtn:SetScript("OnClick", function()
+                editingTagIndex = i
+                tagLabelBox:SetText(tag.label or "")
+                tagValueBox:SetText(tag.value or "")
+                if tag.color then
+                    local r, g, b = tag.color.r, tag.color.g, tag.color.b
+                    tagColorBox:SetText(string.format("%02x%02x%02x", floor(r * 255 + 0.5), floor(g * 255 + 0.5), floor(b * 255 + 0.5)))
+                else
+                    tagColorBox:SetText("#4aa3ff")
+                end
+                addTagButton:SetText("Save")
+            end)
+            row.deleteBtn:SetScript("OnClick", function()
+                table.remove(ECB.workingCopy.quickTags, i)
+                ECB_DB.quickTags = ECB:CopyTable(ECB.workingCopy.quickTags)
+                ECB:ApplySettings(ECB.workingCopy)
+                RefreshTagRows()
+            end)
+            row:SetPoint("TOPLEFT", quickTagHeader, "BOTTOMLEFT", 0, -80 - ((i - 1) * 28))
+            row:Show()
+        end
+    end
+
+    local addTagButton = CreateDarkButton(panel, 80, 22, "Add")
+    addTagButton:SetPoint("TOPLEFT", tagColorBox, "BOTTOMLEFT", 0, -12)
+    addTagButton:SetScript("OnClick", function()
+        local label = Trim(tagLabelBox:GetText())
+        local value = Trim(tagValueBox:GetText())
+        local color = ParseHexColor(tagColorBox:GetText())
+        if label == "" or value == "" or not color then
+            print("|cffff0000Quick tag requires label, value and a valid hex color.")
+            return
+        end
+
+        local tag = { label = label, value = value, color = color, enabled = true }
+        if editingTagIndex then
+            ECB.workingCopy.quickTags[editingTagIndex] = tag
+            editingTagIndex = nil
+            addTagButton:SetText("Add")
+        else
+            ECB.workingCopy.quickTags = ECB.workingCopy.quickTags or {}
+            table.insert(ECB.workingCopy.quickTags, tag)
+        end
+
+        ECB_DB.quickTags = ECB:CopyTable(ECB.workingCopy.quickTags)
+        ECB:ApplySettings(ECB.workingCopy)
+        tagLabelBox:SetText("")
+        tagValueBox:SetText("")
+        tagColorBox:SetText("#4aa3ff")
+        RefreshTagRows()
+    end)
+
+    local tagImportHeader = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    tagImportHeader:SetPoint("TOPLEFT", addTagButton, "BOTTOMLEFT", 0, -18)
+    tagImportHeader:SetText("Import / Export Tags")
+
+    local tagImportText = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+    tagImportText:SetSize(420, 90)
+    tagImportText:SetPoint("TOPLEFT", tagImportHeader, "BOTTOMLEFT", 0, -8)
+    tagImportText:SetMultiLine(true)
+    tagImportText:SetAutoFocus(false)
+    tagImportText:SetTextInsets(8, 8, 8, 8)
+    tagImportText:SetText("label|value|#RRGGBB\nExample: @mythic+|<@&1393973414137696370>|#5aa3ff")
+    tagImportText:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+
+    local function ExportTagsText()
+        local lines = {}
+        for _, tag in ipairs(ECB.workingCopy.quickTags or {}) do
+            if tag and tag.label and tag.value then
+                local r = tag.color and tag.color.r or 0.35
+                local g = tag.color and tag.color.g or 0.75
+                local b = tag.color and tag.color.b or 1.0
+                local hex = string.format("%02x%02x%02x", floor(r * 255 + 0.5), floor(g * 255 + 0.5), floor(b * 255 + 0.5))
+                table.insert(lines, string.format("%s|%s|#%s", tag.label, tag.value, hex))
+            end
+        end
+        return table.concat(lines, "\n")
+    end
+
+    local function ImportTagsText()
+        local text = tagImportText:GetText() or ""
+        local tags = {}
+        for line in string.gmatch(text, "[^\r\n]+") do
+            local label, value, hex = line:match("^%s*(.-)%s*|%s*(.-)%s*|%s*(.-)%s*$")
+            if label and value and label ~= "" and value ~= "" then
+                local color = ParseHexColor(hex or "#4aa3ff")
+                if not color then color = { r = 0.35, g = 0.75, b = 1.0 } end
+                table.insert(tags, {
+                    label = label,
+                    value = value,
+                    color = color,
+                    enabled = true,
+                })
+            end
+        end
+        return tags
+    end
+
+    local exportTagsBtn = CreateDarkButton(panel, 90, 22, "Export")
+    exportTagsBtn:SetPoint("TOPLEFT", tagImportText, "BOTTOMLEFT", 0, -10)
+    exportTagsBtn:SetScript("OnClick", function()
+        tagImportText:SetText(ExportTagsText())
+    end)
+
+    local importTagsBtn = CreateDarkButton(panel, 90, 22, "Import")
+    importTagsBtn:SetPoint("LEFT", exportTagsBtn, "RIGHT", 8, 0)
+    importTagsBtn:SetScript("OnClick", function()
+        local imported = ImportTagsText()
+        if #imported == 0 then
+            print("|cffff0000No valid tags found in the import text.")
+            return
+        end
+        ECB.workingCopy.quickTags = imported
+        ECB_DB.quickTags = ECB:CopyTable(imported)
+        ECB:ApplySettings(ECB.workingCopy)
+        RefreshTagRows()
+        tagImportText:SetText(ExportTagsText())
+    end)
+
     local defaultsBtn = CreateDarkButton(panel, 90, 22, "Defaults")
-    defaultsBtn:SetPoint("TOPLEFT", prevCbAnchor, "BOTTOMLEFT", 0, -16)
+    defaultsBtn:SetPoint("TOPLEFT", addTagButton, "BOTTOMLEFT", 0, -12)
     defaultsBtn:SetScript("OnClick", function()
-        ApplyDefaults(sizeSlider, spacingSlider, verticalCheck, channelCheckboxes)
+        ApplyDefaults(sizeSlider, spacingSlider, tagSpacingSlider, verticalCheck, tagsBeforeCheck, channelCheckboxes)
     end)
 
     local lockBtn = CreateDarkButton(panel, 90, 22, "")
@@ -352,29 +561,36 @@ function ECB:CreateBlizzardConfig()
 
     panel._sizeSlider        = sizeSlider
     panel._spacingSlider     = spacingSlider
+    panel._tagSpacingSlider  = tagSpacingSlider
     panel._verticalCheck     = verticalCheck
+    panel._tagsBeforeCheck   = tagsBeforeCheck
     panel._channelCheckboxes = channelCheckboxes
 
     -- OnShow: seed model and sync sliders under the updating guard.
     panel:SetScript("OnShow", function()
         ECB.savedBeforeEdit = ECB:CopyTable(ECB.db)
         ECB.workingCopy     = ECB:CopyTable(ECB.db)
+        ECB.workingCopy.quickTags = ECB.workingCopy.quickTags or {}
         updating = true
         sizeSlider:SetValue(ECB.workingCopy.bubbleSize)
         spacingSlider:SetValue(ECB.workingCopy.bubbleSpacing)
+        tagSpacingSlider:SetValue(ECB.workingCopy.tagSpacing or 6)
         verticalCheck:SetChecked(ECB.workingCopy.vertical)
+        tagsBeforeCheck:SetChecked(ECB.workingCopy.tagsBeforeChannels ~= false)
         local hidden = ECB.workingCopy.hiddenChannels or {}
         for key, cb in pairs(channelCheckboxes) do
             cb:SetChecked(hidden[key] and true or false)
         end
         updating = false
+        RefreshTagRows()
+        tagImportText:SetText(ExportTagsText())
         RefreshLockButton()
     end)
 
     -- Blizzard panel lifecycle callbacks (called by the game, not by us).
     panel.okay    = CommitWorkingCopy
     panel.cancel  = CancelEditing
-    panel.default = function() ApplyDefaults(sizeSlider, spacingSlider, verticalCheck, channelCheckboxes) end
+    panel.default = function() ApplyDefaults(sizeSlider, spacingSlider, tagSpacingSlider, verticalCheck, tagsBeforeCheck, channelCheckboxes) end
 
     -- Register with the Retail / Midnight Settings API; fall back for older clients.
     if Settings and Settings.RegisterCanvasLayoutCategory then
@@ -429,9 +645,11 @@ function ECB:OpenConfig()
     -- Sync slider thumbs and readout labels to the freshly seeded workingCopy.
     -- The guard prevents OnValueChanged from treating this as a user gesture.
     updating = true
-    if ui._sizeSlider    then ui._sizeSlider:SetValue(self.workingCopy.bubbleSize)       end
-    if ui._spacingSlider then ui._spacingSlider:SetValue(self.workingCopy.bubbleSpacing) end
-    if ui._verticalCheck then ui._verticalCheck:SetChecked(self.workingCopy.vertical)    end
+    if ui._sizeSlider       then ui._sizeSlider:SetValue(self.workingCopy.bubbleSize) end
+    if ui._spacingSlider    then ui._spacingSlider:SetValue(self.workingCopy.bubbleSpacing) end
+    if ui._tagSpacingSlider then ui._tagSpacingSlider:SetValue(self.workingCopy.tagSpacing or 6) end
+    if ui._verticalCheck    then ui._verticalCheck:SetChecked(self.workingCopy.vertical) end
+    if ui._tagsBeforeCheck  then ui._tagsBeforeCheck:SetChecked(self.workingCopy.tagsBeforeChannels ~= false) end
     if ui._channelCheckboxes then
         local hidden = self.workingCopy.hiddenChannels or {}
         for key, cb in pairs(ui._channelCheckboxes) do

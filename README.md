@@ -6,6 +6,9 @@ A World of Warcraft addon that adds small colored circular chat channel buttons 
 
 - Circular color-coded buttons anchored above the chat tab
 - Supports: **Say**, **Yell**, **Guild**, **Officer**, **Party**, **Raid**, and **Instance Chat**
+- Optional quick-tag buttons for Discord role mentions or other repeat text inserts, with per-tag color, label, and value
+- Tag groups can be placed before or after the channel buttons and spaced independently
+- Tags can be imported or exported as a plain text list for easy sharing between setups
 - Buttons are shown/hidden automatically based on your current group and guild status:
   - **Guild** and **Officer** — visible only when in a guild (Officer requires officer permissions)
   - **Party** — visible only when in a party (not a raid)
