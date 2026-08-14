@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.0.16-alpha] - 2026-08-14
+## [1.0.16] - 2026-08-14
 ### Added
 - Configurable prepared phrase bubbles with custom text, tooltip, and color
 - Phrase insertion at the current chat cursor without automatically sending the message
