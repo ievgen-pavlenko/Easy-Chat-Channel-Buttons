@@ -156,6 +156,106 @@ local function CreateChannelButton(parent, channelDef)
 end
 
 -------------------------------------------------------------------------------
+-- CreatePhraseButton (module-private)
+-- Builds a circular button whose colour, tooltip, and inserted text are read
+-- from btn._phraseDef.  Reading the current definition at interaction time lets
+-- the config editor update buttons in place without leaking frames.
+-------------------------------------------------------------------------------
+local function CreatePhraseButton(parent)
+    local size = ECB.db.bubbleSize
+    local btn  = CreateFrame("Button", nil, parent)
+    btn:SetSize(size, size)
+    btn:SetNormalTexture("")
+    btn:SetPushedTexture("")
+    btn:SetHighlightTexture("")
+    btn:SetDisabledTexture("")
+
+    if ECB:IsElvUILoaded() then
+        local glow = btn:CreateTexture(nil, "BACKGROUND", nil, -1)
+        glow:SetPoint("TOPLEFT",     btn, "TOPLEFT",     -2,  2)
+        glow:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT",  2, -2)
+        AddCircleMask(glow, btn)
+        btn._glow = glow
+    end
+
+    local bg = btn:CreateTexture(nil, "BACKGROUND", nil, 0)
+    bg:SetAllPoints()
+    AddCircleMask(bg, btn)
+    btn._bg = bg
+
+    local hl = btn:CreateTexture(nil, "HIGHLIGHT", nil, 0)
+    hl:SetAllPoints()
+    hl:SetColorTexture(1, 1, 1, 0.22)
+    AddCircleMask(hl, btn)
+
+    btn:SetScript("OnEnter", function(self)
+        local phrase = self._phraseDef
+        if not phrase then return end
+        local tooltip = phrase.tooltip
+        if type(tooltip) ~= "string" or tooltip == "" then
+            tooltip = phrase.text
+        end
+        if type(tooltip) ~= "string" or tooltip == "" then return end
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:AddLine(tooltip, 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    btn:SetScript("OnClick", function(self)
+        local phrase = self._phraseDef
+        if phrase then ECB:InsertPhrase(phrase.text) end
+    end)
+
+    return btn
+end
+
+local function GetPhraseColor(phrase)
+    local color = phrase and type(phrase.color) == "table" and phrase.color or nil
+    local r = color and tonumber(color.r) or 0.20
+    local g = color and tonumber(color.g) or 0.65
+    local b = color and tonumber(color.b) or 1.00
+    return math.max(0, math.min(1, r)),
+           math.max(0, math.min(1, g)),
+           math.max(0, math.min(1, b))
+end
+
+-------------------------------------------------------------------------------
+-- ECB:SyncPhraseButtons
+-- Reuses existing phrase button frames, creating only when the configured list
+-- grows.  Empty phrases remain editable in settings but do not appear in the
+-- live bar.
+-------------------------------------------------------------------------------
+function ECB:SyncPhraseButtons()
+    if not self.mainFrame then return end
+
+    local phrases = type(self.db.phrases) == "table" and self.db.phrases or {}
+    for i, phrase in ipairs(phrases) do
+        if type(phrase) ~= "table" then phrase = {} end
+        local btn = self.phraseButtons[i]
+        if not btn then
+            btn = CreatePhraseButton(self.mainFrame)
+            self.phraseButtons[i] = btn
+        end
+
+        btn._phraseDef = phrase
+        local r, g, b = GetPhraseColor(phrase)
+        btn._bg:SetColorTexture(r, g, b, 1)
+        if btn._glow then btn._glow:SetColorTexture(r, g, b, 0.35) end
+
+        if type(phrase.text) == "string" and phrase.text ~= "" then
+            btn:Show()
+        else
+            btn:Hide()
+        end
+    end
+
+    for i = #phrases + 1, #self.phraseButtons do
+        self.phraseButtons[i]._phraseDef = nil
+        self.phraseButtons[i]:Hide()
+    end
+end
+
+-------------------------------------------------------------------------------
 -- ECB:RefreshButtons
 -- Resizes every button to the current bubbleSize, then reflows only the
 -- visible buttons horizontally (hidden buttons leave no gap).  The container
@@ -165,32 +265,50 @@ function ECB:RefreshButtons()
     local size     = self.db.bubbleSize
     local spacing  = self.db.bubbleSpacing
     local vertical = self.db.vertical
+    local groupGap = self.db.phraseGroupSpacing or 20
     local prev     = nil
+    local prevGroup = nil
     local count    = 0
+    local total    = 0
 
-    for _, btn in ipairs(self.buttons) do
-        btn:SetSize(size, size)
-        if btn:IsShown() then
-            btn:ClearAllPoints()
-            if prev == nil then
-                if vertical then
-                    btn:SetPoint("TOP", self.mainFrame, "TOP", 0, 0)
+    local function AddGroup(buttons, groupName)
+        for _, btn in ipairs(buttons) do
+            btn:SetSize(size, size)
+            if btn:IsShown() then
+                btn:ClearAllPoints()
+                local gap = spacing
+                if prev and prevGroup ~= groupName then gap = groupGap end
+
+                if prev == nil then
+                    if vertical then
+                        btn:SetPoint("TOP", self.mainFrame, "TOP", 0, 0)
+                    else
+                        btn:SetPoint("LEFT", self.mainFrame, "LEFT", 0, 0)
+                    end
+                elseif vertical then
+                    btn:SetPoint("TOP", prev, "BOTTOM", 0, -gap)
                 else
-                    btn:SetPoint("LEFT", self.mainFrame, "LEFT", 0, 0)
+                    btn:SetPoint("LEFT", prev, "RIGHT", gap, 0)
                 end
-            else
-                if vertical then
-                    btn:SetPoint("TOP", prev, "BOTTOM", 0, -spacing)
-                else
-                    btn:SetPoint("LEFT", prev, "RIGHT", spacing, 0)
-                end
+
+                if count > 0 then total = total + gap end
+                total = total + size
+                prev      = btn
+                prevGroup = groupName
+                count     = count + 1
             end
-            prev  = btn
-            count = count + 1
         end
     end
 
-    local total = count > 0 and (count * size + (count - 1) * spacing) or 1
+    if self.db.phrasePosition == "before" then
+        AddGroup(self.phraseButtons, "phrases")
+        AddGroup(self.buttons, "channels")
+    else
+        AddGroup(self.buttons, "channels")
+        AddGroup(self.phraseButtons, "phrases")
+    end
+
+    if count == 0 then total = 1 end
     if vertical then
         self.mainFrame:SetSize(size, total)
     else
@@ -242,6 +360,7 @@ function ECB:UpdateButtonColors()
             if btn._glow then btn._glow:SetColorTexture(r, g, b, 0.35) end
         end
     end
+    self:SyncPhraseButtons()
 end
 
 -------------------------------------------------------------------------------
@@ -292,6 +411,13 @@ function ECB:ApplySettings(settings)
     self.db.bubbleSpacing  = settings.bubbleSpacing
     self.db.vertical       = settings.vertical
     self.db.hiddenChannels = settings.hiddenChannels or {}
+    self.db.phrases        = type(settings.phrases) == "table" and settings.phrases or {}
+    self.db.phraseGroupSpacing = math.max(
+        C.SLIDER.phraseGroupSpacing.min,
+        math.min(C.SLIDER.phraseGroupSpacing.max,
+            tonumber(settings.phraseGroupSpacing) or self.defaults.phraseGroupSpacing))
+    self.db.phrasePosition = settings.phrasePosition == "before" and "before" or "after"
+    self:SyncPhraseButtons()
     -- UpdateButtonVisibility re-checks show/hide predicates and then calls
     -- RefreshButtons, so size, spacing, visibility, and layout are all updated
     -- in one pass.
@@ -307,6 +433,7 @@ function ECB:InitializeButtons()
     for i, channelDef in ipairs(C.CHANNELS) do
         self.buttons[i] = CreateChannelButton(self.mainFrame, channelDef)
     end
+    self:SyncPhraseButtons()
     self:UpdateButtonVisibility()
 end
 

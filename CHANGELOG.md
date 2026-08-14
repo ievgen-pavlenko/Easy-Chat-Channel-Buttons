@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.16-alpha] - 2026-08-14
+### Added
+- Configurable prepared phrase bubbles with custom text, tooltip, and color
+- Phrase insertion at the current chat cursor without automatically sending the message
+- Configurable phrase group position before/after channel bubbles
+- Configurable 10–60 px spacing between phrase and channel groups
+- Prepared phrase export/import with validation and replacement confirmation
+
 ## [1.0.15] - 2026-08-01
 - Added support for World of Warcraft Retail 12.1.0
 - Improved drag and positioning usability for the button bar

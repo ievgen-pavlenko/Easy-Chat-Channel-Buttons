@@ -32,6 +32,22 @@ C.SLIDER = {
         max   = 12,
         step  = 1,
     },
+    phraseGroupSpacing = {
+        label = "Phrase Group Spacing",
+        min   = 10,
+        max   = 60,
+        step  = 1,
+    },
+}
+
+-- New phrases cycle through this palette.  Every phrase keeps its own copy of
+-- the selected colour in SavedVariables and can be changed in the config UI.
+C.PHRASE_COLORS = {
+    { r = 0.20, g = 0.65, b = 1.00 },
+    { r = 0.35, g = 0.85, b = 0.45 },
+    { r = 1.00, g = 0.65, b = 0.20 },
+    { r = 0.85, g = 0.35, b = 0.85 },
+    { r = 1.00, g = 0.35, b = 0.40 },
 }
 
 -------------------------------------------------------------------------------

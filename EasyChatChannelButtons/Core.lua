@@ -13,11 +13,14 @@ ns.ECB = ECB
 -- Defaults
 -------------------------------------------------------------------------------
 ECB.defaults = {
-    bubbleSize     = 10,
-    bubbleSpacing  = 7,
-    vertical       = false,
-    barHidden      = false,
-    hiddenChannels = {},
+    bubbleSize         = 10,
+    bubbleSpacing      = 7,
+    vertical           = false,
+    barHidden          = false,
+    hiddenChannels     = {},
+    phrases            = {},
+    phraseGroupSpacing = 20,
+    phrasePosition     = "after",
 }
 
 -------------------------------------------------------------------------------
@@ -25,6 +28,7 @@ ECB.defaults = {
 -------------------------------------------------------------------------------
 ECB.mainFrame       = nil
 ECB.buttons         = {}
+ECB.phraseButtons   = {}
 ECB.ElvUIE          = nil  -- resolved at PLAYER_LOGIN
 ECB.activeChatType  = nil  -- set by ChatEdit hooks; drives UpdateActiveIndicator
 

@@ -48,6 +48,29 @@ function ECB:SwitchChatType(chatType)
 end
 
 -------------------------------------------------------------------------------
+-- ECB:InsertPhrase(text)
+-- Inserts a prepared phrase at the cursor without sending it.  If no chat edit
+-- box is open, opens the default chat edit box pre-filled with the phrase.
+-------------------------------------------------------------------------------
+function ECB:InsertPhrase(text)
+    if type(text) ~= "string" or text == "" then return end
+
+    local box = self:GetActiveEditBox()
+    if box then
+        if box.Insert then
+            box:Insert(text)
+        else
+            -- Defensive fallback for clients whose edit box does not expose
+            -- Insert(); retail EditBox normally always provides it.
+            box:SetText((box:GetText() or "") .. text)
+        end
+        box:SetFocus()
+    else
+        ChatFrame_OpenChat(text, ChatFrame1)
+    end
+end
+
+-------------------------------------------------------------------------------
 -- ECB:GetChannelColor(channelDef)
 -- Returns r, g, b from the game's live ChatTypeInfo so colors always match
 -- the player's own chat color settings.  Falls back to white if ChatTypeInfo
