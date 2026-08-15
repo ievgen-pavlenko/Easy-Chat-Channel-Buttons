@@ -25,6 +25,7 @@ libs\LibDBIcon-1.0\LibDBIcon-1.0\LibDBIcon-1.0.lua
 Core.lua
 Constants.lua
 Chat.lua
+CustomChannels.lua
 Utils.lua
 Buttons.lua
 ElvUI.lua

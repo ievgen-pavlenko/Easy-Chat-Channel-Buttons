@@ -48,6 +48,62 @@ function ECB:SwitchChatType(chatType)
 end
 
 -------------------------------------------------------------------------------
+-- ECB:GetEditBoxChannelTarget
+-- Returns the resolved local channel ID for a chat edit box.  Retail mixins
+-- expose GetChannelTarget(); the attribute fallback keeps this defensive.
+-------------------------------------------------------------------------------
+function ECB:GetEditBoxChannelTarget(box)
+    if not box then return nil end
+    local target
+    if box.GetChannelTarget then
+        target = box:GetChannelTarget()
+    else
+        target = box:GetAttribute("channelTarget")
+        if target and GetChannelName then target = GetChannelName(target) end
+    end
+    target = tonumber(target)
+    return target and target > 0 and target or nil
+end
+
+-------------------------------------------------------------------------------
+-- ECB:SwitchCustomChannel
+-- Resolves the favorite immediately before switching so a zone transition can
+-- never leave a button pointing at the wrong numbered channel.
+-------------------------------------------------------------------------------
+function ECB:SwitchCustomChannel(favorite)
+    self:RefreshCustomChannels(false)
+    local channel = self:ResolveCustomChannel(favorite)
+    if not channel then
+        print("|cff00ff00Easy Chat Channel Buttons:|r Channel is not available.")
+        return
+    end
+
+    local box = self:GetActiveEditBox()
+    if box then
+        if box.SetChannelTarget then
+            box:SetChannelTarget(channel.localID)
+        else
+            box:SetAttribute("channelTarget", channel.localID)
+        end
+        if box.SetChatType then
+            box:SetChatType("CHANNEL")
+        else
+            box:SetAttribute("chatType", "CHANNEL")
+        end
+        if box.UpdateHeader then
+            box:UpdateHeader()
+        elseif ChatEdit_UpdateHeader then
+            ChatEdit_UpdateHeader(box)
+        end
+        self.activeChatType = "CHANNEL"
+        self.activeChannelTarget = channel.localID
+        self:UpdateActiveIndicator()
+    else
+        ChatFrame_OpenChat("/" .. channel.localID .. " ", ChatFrame1)
+    end
+end
+
+-------------------------------------------------------------------------------
 -- ECB:InsertPhrase(text)
 -- Inserts a prepared phrase at the cursor without sending it.  If no chat edit
 -- box is open, opens the default chat edit box pre-filled with the phrase.

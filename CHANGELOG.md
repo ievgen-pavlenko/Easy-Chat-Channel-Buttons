@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.1.0] - 2026-08-15
+### Added
+- Account-wide Favorites for numbered zone and player-created chats such as General, Trade, Services, and LocalDefense; Community chats are not included
+- Numbered-channel buttons that keep the correct `/N` after zone changes, use the player's chat colors, and return automatically when a favorite becomes available again
+- `Custom Channels` manager for adding favorites from channels available in the current location or by entering a channel name or active `/N`; it prevents duplicates, confirms changes, and supports Settings `Cancel`
+- Automatic first-time setup that adds available numbered channels and waits until later if none are available
+- Optional button labels showing built-in chat letters, current channel numbers, or the first character of a Prepared Phrase tooltip, including non-English text and emoji
+- Optional larger click areas for small bubbles without changing the visible circle size
+
+### Changed
+- Active highlighting now follows the exact numbered channel when switching between Favorites
+- Built-in chats, numbered-channel Favorites, and Prepared Phrases are now separated into clear groups using `Group Spacing`, while existing spacing preferences are preserved
+- Reorganized Settings into compact `Appearance` and `Accessibility` sections plus a two-column `Built-in Buttons` list where checked means visible and labels are clickable
+- Unified `Custom Channels` and Import/Export window controls with `X`, `Close`, and `Escape` behavior
+- Empty phrase and channel lists now show clear guidance, and button tooltips now include consistent action hints
+- Made long Prepared Phrase import and export text vertically scrollable
+
 ## [1.0.16] - 2026-08-14
 ### Added
 - Configurable prepared phrase bubbles with custom text, tooltip, and color

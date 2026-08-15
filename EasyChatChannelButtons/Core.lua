@@ -18,9 +18,12 @@ ECB.defaults = {
     vertical           = false,
     barHidden          = false,
     hiddenChannels     = {},
+    customChannels     = {},
     phrases            = {},
     phraseGroupSpacing = 20,
     phrasePosition     = "after",
+    showButtonLabels   = false,
+    comfortableClickTargets = false,
 }
 
 -------------------------------------------------------------------------------
@@ -28,9 +31,15 @@ ECB.defaults = {
 -------------------------------------------------------------------------------
 ECB.mainFrame       = nil
 ECB.buttons         = {}
+ECB.customChannelButtons = {}
 ECB.phraseButtons   = {}
 ECB.ElvUIE          = nil  -- resolved at PLAYER_LOGIN
 ECB.activeChatType  = nil  -- set by ChatEdit hooks; drives UpdateActiveIndicator
+ECB.activeChannelTarget = nil
+ECB.activeCustomChannels = {}
+ECB.activeCustomChannelsByIdentity = {}
+ECB.activeCustomChannelsByName = {}
+ECB.activeCustomChannelsByLocalID = {}
 
 -- Config working copies
 ECB.db              = {}   -- runtime settings (mirrors ECB_DB)
@@ -123,14 +132,18 @@ local function OnLogin()
             local function onShowDeferred()
                 if not ECB.mainFrame or not editBox:IsVisible() then return end
                 ECB.activeChatType = editBox:GetAttribute("chatType")
+                ECB.activeChannelTarget = ECB.activeChatType == "CHANNEL"
+                    and ECB:GetEditBoxChannelTarget(editBox) or nil
                 ECB:UpdateActiveIndicator()
             end
 
             editBox:HookScript("OnAttributeChanged", function(_, name, value)
                 local attr = tostring(name):lower()
-                if attr ~= "chattype" then return end  -- attribute names are lower-case
+                if attr ~= "chattype" and attr ~= "channeltarget" then return end
                 if not ECB.mainFrame or not editBox:IsVisible() then return end
-                ECB.activeChatType = value
+                ECB.activeChatType = editBox:GetAttribute("chatType")
+                ECB.activeChannelTarget = ECB.activeChatType == "CHANNEL"
+                    and ECB:GetEditBoxChannelTarget(editBox) or nil
                 ECB:UpdateActiveIndicator()
             end)
             -- OnShow with a one-frame defer so Blizzard finishes setting
@@ -147,6 +160,7 @@ local function OnLogin()
             editBox:HookScript("OnHide", function()
                 if not ECB.mainFrame then return end
                 ECB.activeChatType = nil
+                ECB.activeChannelTarget = nil
                 ECB:UpdateActiveIndicator()
             end)
         end
@@ -186,12 +200,15 @@ local function OnLogin()
                 local editBox = _G["ChatFrame" .. i .. "EditBox"]
                 if editBox and editBox:IsVisible() then
                     ECB.activeChatType = editBox:GetAttribute("chatType")
+                    ECB.activeChannelTarget = ECB.activeChatType == "CHANNEL"
+                        and ECB:GetEditBoxChannelTarget(editBox) or nil
                     ECB:UpdateActiveIndicator()
                     return
                 end
             end
             -- No edit box open — ensure all rings/dimming are cleared.
             ECB.activeChatType = nil
+            ECB.activeChannelTarget = nil
             ECB:UpdateActiveIndicator()
         end)
     else
@@ -204,6 +221,8 @@ local function OnLogin()
                 local editBox = _G["ChatFrame" .. i .. "EditBox"]
                 if editBox and editBox:IsVisible() then
                     ECB.activeChatType = editBox:GetAttribute("chatType")
+                    ECB.activeChannelTarget = ECB.activeChatType == "CHANNEL"
+                        and ECB:GetEditBoxChannelTarget(editBox) or nil
                     ECB:UpdateActiveIndicator()
                     found = true
                     break
@@ -211,6 +230,7 @@ local function OnLogin()
             end
             if not found then
                 ECB.activeChatType = nil
+                ECB.activeChannelTarget = nil
                 ECB:UpdateActiveIndicator()
             end
         end
@@ -227,6 +247,7 @@ eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
 eventFrame:RegisterEvent("GUILD_ROSTER_UPDATE")
 eventFrame:RegisterEvent("PLAYER_GUILD_UPDATE")
 eventFrame:RegisterEvent("UPDATE_CHAT_COLOR")
+eventFrame:RegisterEvent("CHANNEL_UI_UPDATE")
 
 eventFrame:SetScript("OnEvent", function(_, event)
     if event == "PLAYER_LOGIN" then
@@ -234,6 +255,20 @@ eventFrame:SetScript("OnEvent", function(_, event)
     elseif event == "UPDATE_CHAT_COLOR" then
         -- Player changed a chat color in Interface Options — repaint buttons.
         if ECB.mainFrame then ECB:UpdateButtonColors() end
+    elseif event == "CHANNEL_UI_UPDATE" then
+        if ECB.mainFrame then ECB:RefreshCustomChannels(true) end
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        if ECB.mainFrame then
+            ECB:UpdateButtonVisibility()
+            local function RefreshDeferredChannels()
+                if ECB.mainFrame then ECB:RefreshCustomChannels(true) end
+            end
+            if C_Timer and C_Timer.After then
+                C_Timer.After(0, RefreshDeferredChannels)
+            else
+                RefreshDeferredChannels()
+            end
+        end
     else
         -- Any group/world event may change which channels are relevant.
         if ECB.mainFrame then ECB:UpdateButtonVisibility() end
@@ -257,7 +292,7 @@ SlashCmdList["EASYCHATCHANNELBUTTONS"] = function(msg)
     elseif cmd == "unlock" then
         ECB:UnlockFrame()
     else
-        print("|cff00ff00EasyChatChannelButtons:|r Usage:")
+        print("|cff00ff00Easy Chat Channel Buttons:|r Usage:")
         print("  |cffffcc00/ecb|r or |cffffcc00/ecb config|r \226\128\147 open settings")
         print("  |cffffcc00/ecb lock|r                    \226\128\147 lock frame position")
         print("  |cffffcc00/ecb unlock|r                  \226\128\147 unlock frame position")

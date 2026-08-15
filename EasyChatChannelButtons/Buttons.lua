@@ -52,13 +52,13 @@ function ECB:LockFrame()
     ECB_DB.locked = true
     SavePosition()
     ApplyLockState(true)
-    print("|cff00ff00EasyChatChannelButtons:|r Frame locked.")
+    print("|cff00ff00Easy Chat Channel Buttons:|r Frame locked.")
 end
 
 function ECB:UnlockFrame()
     ECB_DB.locked = false
     ApplyLockState(false)
-    print("|cff00ff00EasyChatChannelButtons:|r Frame unlocked \226\128\147 drag to reposition, then /ecb lock.")
+    print("|cff00ff00Easy Chat Channel Buttons:|r Frame unlocked \226\128\147 drag to reposition, then /ecb lock.")
 end
 
 -------------------------------------------------------------------------------
@@ -71,6 +71,125 @@ local function AddCircleMask(tex, parent)
     mask:SetTexture(C.CIRCLE_MASK_TEX)
     mask:SetAllPoints(tex)
     tex:AddMaskTexture(mask)
+end
+
+local function GetButtonSlotSize()
+    local size = tonumber(ECB.db.bubbleSize) or ECB.defaults.bubbleSize
+    if ECB.db.comfortableClickTargets then return math.max(20, size) end
+    return size
+end
+
+local function FirstUTF8Character(value)
+    if type(value) ~= "string" then return "" end
+    value = strtrim(value)
+    if value == "" then return "" end
+
+    local first = string.byte(value, 1)
+    if not first then return "" end
+
+    local length
+    if first < 0x80 then
+        length = 1
+    elseif first >= 0xC2 and first < 0xE0 then
+        length = 2
+    elseif first >= 0xE0 and first < 0xF0 then
+        length = 3
+    elseif first >= 0xF0 and first < 0xF5 then
+        length = 4
+    else
+        return ""
+    end
+
+    if #value < length then return "" end
+    for index = 2, length do
+        local continuation = string.byte(value, index)
+        if not continuation or continuation < 0x80 or continuation >= 0xC0 then
+            return ""
+        end
+    end
+    return string.sub(value, 1, length)
+end
+
+local function UpdateCircularButtonGeometry(btn, visualSize, slotSize)
+    btn:SetSize(slotSize, slotSize)
+    if btn._visual then btn._visual:SetSize(visualSize, visualSize) end
+
+    local label = btn._bubbleLabel
+    if not label then return end
+
+    local fontPath = btn._bubbleLabelFont
+    if not fontPath and GameFontNormalSmall and GameFontNormalSmall.GetFont then
+        fontPath = GameFontNormalSmall:GetFont()
+        btn._bubbleLabelFont = fontPath
+    end
+    if fontPath then
+        local fontSize = math.max(6, math.min(12, math.floor(visualSize * 0.55 + 0.5)))
+        label:SetFont(fontPath, fontSize, "OUTLINE")
+    end
+
+    label:SetText(btn._buttonLabelText or "")
+    if ECB.db.showButtonLabels and btn._buttonLabelText
+        and btn._buttonLabelText ~= "" then
+        label:Show()
+    else
+        label:Hide()
+    end
+end
+
+local function CreateCircularButtonBase(parent)
+    local visualSize = tonumber(ECB.db.bubbleSize) or ECB.defaults.bubbleSize
+    local slotSize = GetButtonSlotSize()
+    local btn = CreateFrame("Button", nil, parent)
+    btn:SetSize(slotSize, slotSize)
+    btn:SetNormalTexture("")
+    btn:SetPushedTexture("")
+    btn:SetHighlightTexture("")
+    btn:SetDisabledTexture("")
+
+    local visual = CreateFrame("Frame", nil, btn)
+    visual:SetPoint("CENTER")
+    visual:SetSize(visualSize, visualSize)
+    visual:EnableMouse(false)
+    btn._visual = visual
+
+    if ECB:IsElvUILoaded() then
+        local glow = btn:CreateTexture(nil, "BACKGROUND", nil, -1)
+        glow:SetPoint("TOPLEFT", visual, "TOPLEFT", -2, 2)
+        glow:SetPoint("BOTTOMRIGHT", visual, "BOTTOMRIGHT", 2, -2)
+        AddCircleMask(glow, btn)
+        btn._glow = glow
+    end
+
+    local ring = btn:CreateTexture(nil, "BACKGROUND", nil, -1)
+    ring:SetPoint("TOPLEFT", visual, "TOPLEFT", -2, 2)
+    ring:SetPoint("BOTTOMRIGHT", visual, "BOTTOMRIGHT", 2, -2)
+    ring:SetColorTexture(1, 1, 1, 0.9)
+    AddCircleMask(ring, btn)
+    ring:Hide()
+    btn._ring = ring
+
+    local bg = btn:CreateTexture(nil, "BACKGROUND", nil, 0)
+    bg:SetAllPoints(visual)
+    AddCircleMask(bg, btn)
+    btn._bg = bg
+
+    local highlight = btn:CreateTexture(nil, "HIGHLIGHT", nil, 0)
+    highlight:SetAllPoints(visual)
+    highlight:SetColorTexture(1, 1, 1, 0.22)
+    AddCircleMask(highlight, btn)
+
+    local label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    label:SetAllPoints(visual)
+    label:SetJustifyH("CENTER")
+    label:SetJustifyV("MIDDLE")
+    label:SetTextColor(1, 1, 1, 1)
+    label:SetShadowColor(0, 0, 0, 1)
+    label:SetShadowOffset(1, -1)
+    label:Hide()
+    btn._bubbleLabel = label
+
+    UpdateCircularButtonGeometry(btn, visualSize, slotSize)
+    return btn
 end
 
 -------------------------------------------------------------------------------
@@ -90,61 +209,18 @@ end
 -- to soften the circle edge — still fully circular (masked), no squares.
 -------------------------------------------------------------------------------
 local function CreateChannelButton(parent, channelDef)
-    local size = ECB.db.bubbleSize
-    local btn  = CreateFrame("Button", nil, parent)
-    btn:SetSize(size, size)
-
-    -- The frame itself must be fully transparent — no Blizzard art at all.
-    btn:SetNormalTexture("")
-    btn:SetPushedTexture("")
-    btn:SetHighlightTexture("")
-    btn:SetDisabledTexture("")
-
+    local btn = CreateCircularButtonBase(parent)
     local r, g, b = ECB:GetChannelColor(channelDef)
-
-    -- Optional subtle glow ring when ElvUI is present.
-    -- Still circular (masked) — never a square.
-    if ECB:IsElvUILoaded() then
-        local glow = btn:CreateTexture(nil, "BACKGROUND", nil, -1)
-        glow:SetPoint("TOPLEFT",     btn, "TOPLEFT",     -2,  2)
-        glow:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT",  2, -2)
-        glow:SetColorTexture(r, g, b, 0.35)
-        AddCircleMask(glow, btn)
-        btn._glow = glow
-    end
-
-    -- Active-channel indicator ring.
-    -- Sits at the same BACKGROUND sub-level as the glow but is created after
-    -- it, so it renders on top of the glow within that sub-level.
-    -- The ring is 4 px wider/taller than the button; the opaque bg circle
-    -- (at sub-level 0) covers its centre, leaving a 2 px bright white rim
-    -- that peeks out around the edge.  Hidden until this channel is active.
-    local ring = btn:CreateTexture(nil, "BACKGROUND", nil, -1)
-    ring:SetPoint("TOPLEFT",     btn, "TOPLEFT",     -2,  2)
-    ring:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT",  2, -2)
-    ring:SetColorTexture(1, 1, 1, 0.9)
-    AddCircleMask(ring, btn)
-    ring:Hide()
-    btn._ring = ring
-
-    -- Main fill: the only opaque art layer.
-    local bg = btn:CreateTexture(nil, "BACKGROUND", nil, 0)
-    bg:SetAllPoints()
-    bg:SetColorTexture(r, g, b, 1)
-    AddCircleMask(bg, btn)
-    btn._bg = bg
-    btn._channelDef  = channelDef
-
-    -- Hover highlight — circular, low opacity.
-    local hl = btn:CreateTexture(nil, "HIGHLIGHT", nil, 0)
-    hl:SetAllPoints()
-    hl:SetColorTexture(1, 1, 1, 0.22)
-    AddCircleMask(hl, btn)
+    btn._bg:SetColorTexture(r, g, b, 1)
+    if btn._glow then btn._glow:SetColorTexture(r, g, b, 0.35) end
+    btn._channelDef = channelDef
+    btn._buttonLabelText = channelDef.label
 
     -- Tooltip.
     btn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:AddLine(channelDef.tooltip, 1, 1, 1)
+        GameTooltip:AddLine("Click to switch chat.", 0.75, 0.75, 0.75)
         GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -156,37 +232,39 @@ local function CreateChannelButton(parent, channelDef)
 end
 
 -------------------------------------------------------------------------------
+-- CreateCustomChannelButton (module-private)
+-- Uses the same visual language as built-in channels, but reads its saved
+-- favorite and current runtime resolution from fields updated during sync.
+-------------------------------------------------------------------------------
+local function CreateCustomChannelButton(parent)
+    local btn = CreateCircularButtonBase(parent)
+
+    btn:SetScript("OnEnter", function(self)
+        local channel = self._customChannelRuntime
+        if not channel then return end
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:AddLine(channel.name, 1, 1, 1)
+        GameTooltip:AddLine("Channel /" .. channel.localID, 0.75, 0.75, 0.75)
+        GameTooltip:AddLine("Click to switch chat.", 0.75, 0.75, 0.75)
+        GameTooltip:Show()
+    end)
+    btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    btn:SetScript("OnClick", function(self)
+        if self._customChannelDef then
+            ECB:SwitchCustomChannel(self._customChannelDef)
+        end
+    end)
+    return btn
+end
+
+-------------------------------------------------------------------------------
 -- CreatePhraseButton (module-private)
 -- Builds a circular button whose colour, tooltip, and inserted text are read
 -- from btn._phraseDef.  Reading the current definition at interaction time lets
 -- the config editor update buttons in place without leaking frames.
 -------------------------------------------------------------------------------
 local function CreatePhraseButton(parent)
-    local size = ECB.db.bubbleSize
-    local btn  = CreateFrame("Button", nil, parent)
-    btn:SetSize(size, size)
-    btn:SetNormalTexture("")
-    btn:SetPushedTexture("")
-    btn:SetHighlightTexture("")
-    btn:SetDisabledTexture("")
-
-    if ECB:IsElvUILoaded() then
-        local glow = btn:CreateTexture(nil, "BACKGROUND", nil, -1)
-        glow:SetPoint("TOPLEFT",     btn, "TOPLEFT",     -2,  2)
-        glow:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT",  2, -2)
-        AddCircleMask(glow, btn)
-        btn._glow = glow
-    end
-
-    local bg = btn:CreateTexture(nil, "BACKGROUND", nil, 0)
-    bg:SetAllPoints()
-    AddCircleMask(bg, btn)
-    btn._bg = bg
-
-    local hl = btn:CreateTexture(nil, "HIGHLIGHT", nil, 0)
-    hl:SetAllPoints()
-    hl:SetColorTexture(1, 1, 1, 0.22)
-    AddCircleMask(hl, btn)
+    local btn = CreateCircularButtonBase(parent)
 
     btn:SetScript("OnEnter", function(self)
         local phrase = self._phraseDef
@@ -198,6 +276,7 @@ local function CreatePhraseButton(parent)
         if type(tooltip) ~= "string" or tooltip == "" then return end
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:AddLine(tooltip, 1, 1, 1, true)
+        GameTooltip:AddLine("Click to insert phrase.", 0.75, 0.75, 0.75)
         GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -238,6 +317,7 @@ function ECB:SyncPhraseButtons()
         end
 
         btn._phraseDef = phrase
+        btn._buttonLabelText = FirstUTF8Character(phrase.tooltip)
         local r, g, b = GetPhraseColor(phrase)
         btn._bg:SetColorTexture(r, g, b, 1)
         if btn._glow then btn._glow:SetColorTexture(r, g, b, 0.35) end
@@ -255,6 +335,53 @@ function ECB:SyncPhraseButtons()
     end
 end
 
+local function GetCustomChannelColor(channel)
+    local info = channel and ChatTypeInfo
+        and ChatTypeInfo["CHANNEL" .. tostring(channel.localID)]
+    if not info and ChatTypeInfo then info = ChatTypeInfo.CHANNEL end
+    if info and info.r then return info.r, info.g, info.b end
+    return 1, 1, 1
+end
+
+-------------------------------------------------------------------------------
+-- ECB:SyncCustomChannelButtons
+-- Keeps one reusable frame per saved favorite.  Unavailable favorites retain
+-- their frame and settings entry but remain hidden until discovery resolves
+-- them again.
+-------------------------------------------------------------------------------
+function ECB:SyncCustomChannelButtons()
+    if not self.mainFrame then return end
+
+    local favorites = self:NormalizeCustomChannelFavorites(self.db.customChannels)
+    for i, favorite in ipairs(favorites) do
+        local btn = self.customChannelButtons[i]
+        if not btn then
+            btn = CreateCustomChannelButton(self.mainFrame)
+            self.customChannelButtons[i] = btn
+        end
+
+        local channel = self:ResolveCustomChannel(favorite)
+        btn._customChannelDef = favorite
+        btn._customChannelRuntime = channel
+        btn._buttonLabelText = channel and tostring(channel.localID) or ""
+        if channel then
+            local r, g, b = GetCustomChannelColor(channel)
+            btn._bg:SetColorTexture(r, g, b, 1)
+            if btn._glow then btn._glow:SetColorTexture(r, g, b, 0.35) end
+            btn:Show()
+        else
+            btn:Hide()
+        end
+    end
+
+    for i = #favorites + 1, #self.customChannelButtons do
+        local btn = self.customChannelButtons[i]
+        btn._customChannelDef = nil
+        btn._customChannelRuntime = nil
+        btn:Hide()
+    end
+end
+
 -------------------------------------------------------------------------------
 -- ECB:RefreshButtons
 -- Resizes every button to the current bubbleSize, then reflows only the
@@ -262,7 +389,8 @@ end
 -- frame is resized to match the visible content exactly.
 -------------------------------------------------------------------------------
 function ECB:RefreshButtons()
-    local size     = self.db.bubbleSize
+    local visualSize = self.db.bubbleSize
+    local size     = GetButtonSlotSize()
     local spacing  = self.db.bubbleSpacing
     local vertical = self.db.vertical
     local groupGap = self.db.phraseGroupSpacing or 20
@@ -273,7 +401,7 @@ function ECB:RefreshButtons()
 
     local function AddGroup(buttons, groupName)
         for _, btn in ipairs(buttons) do
-            btn:SetSize(size, size)
+            UpdateCircularButtonGeometry(btn, visualSize, size)
             if btn:IsShown() then
                 btn:ClearAllPoints()
                 local gap = spacing
@@ -300,11 +428,17 @@ function ECB:RefreshButtons()
         end
     end
 
+    -- Built-in chat types, numbered channel Favorites, and prepared phrases
+    -- are distinct visual groups.  AddGroup only inserts groupGap when both
+    -- adjacent groups contain at least one visible button, so unavailable or
+    -- empty groups never leave redundant whitespace.
     if self.db.phrasePosition == "before" then
         AddGroup(self.phraseButtons, "phrases")
-        AddGroup(self.buttons, "channels")
+        AddGroup(self.buttons, "builtinChannels")
+        AddGroup(self.customChannelButtons, "numberedChannels")
     else
-        AddGroup(self.buttons, "channels")
+        AddGroup(self.buttons, "builtinChannels")
+        AddGroup(self.customChannelButtons, "numberedChannels")
         AddGroup(self.phraseButtons, "phrases")
     end
 
@@ -360,6 +494,7 @@ function ECB:UpdateButtonColors()
             if btn._glow then btn._glow:SetColorTexture(r, g, b, 0.35) end
         end
     end
+    self:SyncCustomChannelButtons()
     self:SyncPhraseButtons()
 end
 
@@ -371,6 +506,7 @@ end
 -------------------------------------------------------------------------------
 function ECB:UpdateActiveIndicator()
     local activeChatType = self.activeChatType  -- plain field read, no method call
+    local activeChannelTarget = self.activeChannelTarget
     local chatBoxOpen    = activeChatType ~= nil
     local inactiveAlpha  = chatBoxOpen and 0.5 or 1.0
     local buttons        = self.buttons
@@ -387,6 +523,20 @@ function ECB:UpdateActiveIndicator()
 
         -- Alpha: active button stays at full opacity; others dim slightly
         -- while the chat box is open so the active channel stands out.
+        btn:SetAlpha(isActive and 1.0 or inactiveAlpha)
+    end
+
+    local customButtons = self.customChannelButtons
+    for i = 1, #customButtons do
+        local btn = customButtons[i]
+        local channel = btn._customChannelRuntime
+        local isActive = chatBoxOpen
+            and activeChatType == "CHANNEL"
+            and channel
+            and channel.localID == activeChannelTarget
+        if btn._ring then
+            if isActive then btn._ring:Show() else btn._ring:Hide() end
+        end
         btn:SetAlpha(isActive and 1.0 or inactiveAlpha)
     end
 end
@@ -411,17 +561,22 @@ function ECB:ApplySettings(settings)
     self.db.bubbleSpacing  = settings.bubbleSpacing
     self.db.vertical       = settings.vertical
     self.db.hiddenChannels = settings.hiddenChannels or {}
+    self.db.customChannels = self:NormalizeCustomChannelFavorites(settings.customChannels)
     self.db.phrases        = type(settings.phrases) == "table" and settings.phrases or {}
     self.db.phraseGroupSpacing = math.max(
         C.SLIDER.phraseGroupSpacing.min,
         math.min(C.SLIDER.phraseGroupSpacing.max,
             tonumber(settings.phraseGroupSpacing) or self.defaults.phraseGroupSpacing))
     self.db.phrasePosition = settings.phrasePosition == "before" and "before" or "after"
+    self.db.showButtonLabels = settings.showButtonLabels == true
+    self.db.comfortableClickTargets = settings.comfortableClickTargets == true
+    self:SyncCustomChannelButtons()
     self:SyncPhraseButtons()
     -- UpdateButtonVisibility re-checks show/hide predicates and then calls
     -- RefreshButtons, so size, spacing, visibility, and layout are all updated
     -- in one pass.
     self:UpdateButtonVisibility()
+    self:UpdateActiveIndicator()
 end
 
 -------------------------------------------------------------------------------
@@ -433,6 +588,7 @@ function ECB:InitializeButtons()
     for i, channelDef in ipairs(C.CHANNELS) do
         self.buttons[i] = CreateChannelButton(self.mainFrame, channelDef)
     end
+    self:SyncCustomChannelButtons()
     self:SyncPhraseButtons()
     self:UpdateButtonVisibility()
 end

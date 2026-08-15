@@ -11,8 +11,8 @@ local updating = false
 
 -------------------------------------------------------------------------------
 -- EasyChatChannelButtons – Config
--- Configuration UI: Blizzard settings canvas panel (default) and a standalone
--- draggable ElvUI-styled frame.
+-- Configuration UI: Blizzard settings canvas plus reusable dark manager and
+-- transfer windows.  The same custom skin is used with or without ElvUI.
 --
 -- Data model:
 --   ECB.defaults        – original default values, never mutated
@@ -37,8 +37,6 @@ local updating = false
 -- Creates a flat dark button with no Blizzard chrome.
 -- Uses manual textures so it looks minimal and ElvUI-like regardless of
 -- whether ElvUI is actually loaded.
--- If ElvUI is loaded, ApplyElvUIButtonStyle() is called afterwards to apply
--- ElvUI's own backdrop and highlight on top.
 -------------------------------------------------------------------------------
 local function CreateDarkButton(parent, w, h, label)
     local btn = CreateFrame("Button", nil, parent)
@@ -74,6 +72,22 @@ local function CreateDarkButton(parent, w, h, label)
     btn._label = fs
 
     return btn
+end
+
+local function RegisterEscapeWindow(frame)
+    if not frame or not frame.GetName or not frame:GetName() then return end
+    UISpecialFrames = UISpecialFrames or {}
+    for _, name in ipairs(UISpecialFrames) do
+        if name == frame:GetName() then return end
+    end
+    UISpecialFrames[#UISpecialFrames + 1] = frame:GetName()
+end
+
+local function CreateTopCloseButton(parent)
+    local button = CreateDarkButton(parent, 26, 22, "X")
+    button:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -10, -10)
+    button:SetScript("OnClick", function() parent:Hide() end)
+    return button
 end
 
 -------------------------------------------------------------------------------
@@ -152,6 +166,12 @@ local function CreateLabeledCheckbox(parent, label, anchorFrame, offsetY)
     local lbl = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     lbl:SetPoint("LEFT", cb, "RIGHT", 4, 0)
     lbl:SetText(label)
+    cb._label = lbl
+
+    -- Blizzard's template only makes the square clickable.  Expand the hit
+    -- region over the visible label so all settings checkboxes behave like a
+    -- single control without changing their layout size.
+    cb:SetHitRectInsets(0, -(lbl:GetStringWidth() + 4), 0, 0)
 
     return cb
 end
@@ -192,7 +212,7 @@ end
 
 local function RefreshPhrasePositionLabel(button)
     local before = ECB.workingCopy.phrasePosition == "before"
-    button._label:SetText(before and "Position: Before chats" or "Position: After chats")
+    button._label:SetText(before and "Phrases: Before Chats" or "Phrases: After Chats")
 end
 
 -------------------------------------------------------------------------------
@@ -203,7 +223,7 @@ end
 -------------------------------------------------------------------------------
 local function CreatePhraseEditor(parent)
     local scroll = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", parent, "TOPLEFT", 285, -224)
+    scroll:SetPoint("TOPLEFT", parent, "TOPLEFT", 285, -160)
     scroll:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -32, 20)
 
     local child = CreateFrame("Frame", nil, scroll)
@@ -222,6 +242,12 @@ local function CreatePhraseEditor(parent)
 
     local rows = {}
     local Refresh
+
+    local emptyText = child:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    emptyText:SetPoint("TOPLEFT", child, "TOPLEFT", 6, -8)
+    emptyText:SetPoint("RIGHT", child, "RIGHT", -10, 0)
+    emptyText:SetJustifyH("LEFT")
+    emptyText:SetText("No prepared phrases yet. Click Add Phrase to create one.")
 
     local function UpdateColor(row, r, g, b)
         local index = row._index
@@ -370,7 +396,8 @@ local function CreatePhraseEditor(parent)
                 tonumber(color.b) or 1.00, 1)
             row:Show()
         end
-        child:SetHeight(math.max(1, #phrases * 86))
+        child:SetHeight(math.max(30, #phrases * 86))
+        if #phrases == 0 then emptyText:Show() else emptyText:Hide() end
         if scroll.UpdateScrollChildRect then scroll:UpdateScrollChildRect() end
         local maxScroll = scroll:GetVerticalScrollRange()
         if scroll:GetVerticalScroll() > maxScroll then
@@ -403,6 +430,7 @@ local function CreatePhraseTransferDialog()
     dialog:SetScript("OnDragStart", function(self) self:StartMoving() end)
     dialog:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
     dialog:Hide()
+    RegisterEscapeWindow(dialog)
 
     local border = dialog:CreateTexture(nil, "BACKGROUND")
     border:SetAllPoints()
@@ -416,21 +444,57 @@ local function CreatePhraseTransferDialog()
     title:SetPoint("TOPLEFT", dialog, "TOPLEFT", 18, -17)
     dialog._title = title
 
+    CreateTopCloseButton(dialog)
+
     local instruction = dialog:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     instruction:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
     instruction:SetPoint("RIGHT", dialog, "RIGHT", -18, 0)
     instruction:SetJustifyH("LEFT")
     dialog._instruction = instruction
 
-    local edit = CreateFrame("EditBox", nil, dialog)
-    edit:SetPoint("TOPLEFT", dialog, "TOPLEFT", 18, -70)
-    edit:SetPoint("BOTTOMRIGHT", dialog, "BOTTOMRIGHT", -18, 66)
+    local editScroll = CreateFrame(
+        "ScrollFrame", nil, dialog, "UIPanelScrollFrameTemplate")
+    editScroll:SetPoint("TOPLEFT", dialog, "TOPLEFT", 18, -70)
+    editScroll:SetPoint("BOTTOMRIGHT", dialog, "BOTTOMRIGHT", -32, 66)
+
+    local edit = CreateFrame("EditBox", nil, editScroll)
+    edit:SetSize(1, 1)
     edit:SetAutoFocus(false)
     edit:SetMultiLine(true)
     edit:SetFontObject(ChatFontNormal or GameFontHighlightSmall)
     edit:SetJustifyH("LEFT")
     edit:SetJustifyV("TOP")
     edit:SetTextInsets(8, 8, 8, 8)
+    editScroll:SetScrollChild(edit)
+
+    local measure = dialog:CreateFontString(nil, "OVERLAY")
+    measure:SetFontObject(ChatFontNormal or GameFontHighlightSmall)
+    measure:SetAlpha(0)
+    measure:SetWordWrap(true)
+    if measure.SetNonSpaceWrap then measure:SetNonSpaceWrap(true) end
+
+    local function UpdateTransferEditLayout()
+        local width = math.max(1, editScroll:GetWidth() - 4)
+        edit:SetWidth(width)
+        measure:SetWidth(math.max(1, width - 16))
+        measure:SetText(edit:GetText() or "")
+        edit:SetHeight(math.max(editScroll:GetHeight(), measure:GetStringHeight() + 20))
+        if editScroll.UpdateScrollChildRect then editScroll:UpdateScrollChildRect() end
+    end
+
+    editScroll:HookScript("OnSizeChanged", UpdateTransferEditLayout)
+    edit:SetScript("OnTextChanged", UpdateTransferEditLayout)
+    edit:SetScript("OnCursorChanged", function(_, _, y, _, height)
+        local cursorTop = math.max(0, -(y or 0))
+        local cursorBottom = cursorTop + (height or 0)
+        local scrollTop = editScroll:GetVerticalScroll()
+        local scrollBottom = scrollTop + editScroll:GetHeight()
+        if cursorTop < scrollTop then
+            editScroll:SetVerticalScroll(cursorTop)
+        elseif cursorBottom > scrollBottom then
+            editScroll:SetVerticalScroll(cursorBottom - editScroll:GetHeight())
+        end
+    end)
     edit:SetScript("OnEscapePressed", function(self)
         self:ClearFocus()
         dialog:Hide()
@@ -441,13 +505,14 @@ local function CreatePhraseTransferDialog()
         end
     end)
     dialog._edit = edit
+    dialog._editScroll = editScroll
 
     local editBorder = dialog:CreateTexture(nil, "ARTWORK")
-    editBorder:SetPoint("TOPLEFT", edit, "TOPLEFT", -1, 1)
-    editBorder:SetPoint("BOTTOMRIGHT", edit, "BOTTOMRIGHT", 1, -1)
+    editBorder:SetPoint("TOPLEFT", editScroll, "TOPLEFT", -1, 1)
+    editBorder:SetPoint("BOTTOMRIGHT", editScroll, "BOTTOMRIGHT", 1, -1)
     editBorder:SetColorTexture(0.30, 0.30, 0.35, 0.95)
     local editBody = dialog:CreateTexture(nil, "ARTWORK", nil, 1)
-    editBody:SetAllPoints(edit)
+    editBody:SetAllPoints(editScroll)
     editBody:SetColorTexture(0.025, 0.025, 0.035, 1)
 
     local status = dialog:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -510,7 +575,7 @@ StaticPopupDialogs["ECB_CONFIRM_PHRASE_IMPORT"] = {
             ECB._blizzPanel._refreshPhrases()
         end
         if data.dialog then data.dialog:Hide() end
-        print("|cff00ff00EasyChatChannelButtons:|r Imported " .. #data.phrases .. " prepared phrases.")
+        print("|cff00ff00Easy Chat Channel Buttons:|r Imported " .. #data.phrases .. " prepared phrases.")
     end,
     OnCancel = function(_, data)
         if data and data.dialog then
@@ -534,6 +599,7 @@ function ECB:ShowPhraseExportDialog()
     dialog._status:SetText("")
     dialog._importButton:Hide()
     dialog._edit:SetText(self:SerializePhrases(phrases))
+    dialog._editScroll:SetVerticalScroll(0)
     dialog:Show()
     dialog:Raise()
     dialog._edit:SetFocus()
@@ -547,9 +613,292 @@ function ECB:ShowPhraseImportDialog()
     dialog._status:SetText("")
     dialog._importButton:Show()
     dialog._edit:SetText("")
+    dialog._editScroll:SetVerticalScroll(0)
     dialog:Show()
     dialog:Raise()
     dialog._edit:SetFocus()
+end
+
+-------------------------------------------------------------------------------
+-- Custom channel manager
+-------------------------------------------------------------------------------
+local function CreateCustomChannelManager()
+    if ECB._customChannelManager then return ECB._customChannelManager end
+
+    local manager = CreateFrame("Frame", "EasyChatChannelButtonsCustomChannelManager", UIParent)
+    manager:SetSize(640, 520)
+    manager:SetPoint("CENTER", UIParent, "CENTER", 0, 20)
+    manager:SetFrameStrata("DIALOG")
+    manager:SetFrameLevel(200)
+    manager:SetClampedToScreen(true)
+    manager:SetMovable(true)
+    manager:EnableMouse(true)
+    manager:RegisterForDrag("LeftButton")
+    manager:SetScript("OnDragStart", function(self) self:StartMoving() end)
+    manager:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
+    manager:Hide()
+    RegisterEscapeWindow(manager)
+
+    local border = manager:CreateTexture(nil, "BACKGROUND")
+    border:SetAllPoints()
+    border:SetColorTexture(0.30, 0.30, 0.35, 0.98)
+    local body = manager:CreateTexture(nil, "BACKGROUND", nil, 1)
+    body:SetPoint("TOPLEFT", manager, "TOPLEFT", 1, -1)
+    body:SetPoint("BOTTOMRIGHT", manager, "BOTTOMRIGHT", -1, 1)
+    body:SetColorTexture(0.055, 0.055, 0.075, 0.99)
+
+    local title = manager:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOPLEFT", manager, "TOPLEFT", 16, -16)
+    title:SetText("Custom Channels")
+
+    local subtitle = manager:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -5)
+    subtitle:SetText("Favorite numbered text channels. The addon does not join or leave channels.")
+
+    CreateTopCloseButton(manager)
+
+    local inputLabel = manager:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    inputLabel:SetPoint("TOPLEFT", subtitle, "BOTTOMLEFT", 0, -14)
+    inputLabel:SetText("Channel name or active /N")
+
+    local input = CreateDarkEditBox(manager, 430)
+    input:SetPoint("TOPLEFT", inputLabel, "BOTTOMLEFT", 0, -6)
+    input:SetMaxLetters(255)
+
+    local addManualButton = CreateDarkButton(manager, 92, 22, "Add Channel")
+    addManualButton:SetPoint("LEFT", input, "RIGHT", 8, 0)
+
+    local status = manager:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    status:SetPoint("TOPLEFT", input, "BOTTOMLEFT", 0, -5)
+    status:SetPoint("RIGHT", manager, "RIGHT", -16, 0)
+    status:SetJustifyH("LEFT")
+    status:SetText("")
+    manager._status = status
+
+    local favoritesHeader = manager:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    favoritesHeader:SetPoint("TOPLEFT", status, "BOTTOMLEFT", 0, -16)
+    favoritesHeader:SetText("Favorites")
+
+    local availableHeader = manager:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    availableHeader:SetPoint("TOPLEFT", status, "BOTTOMLEFT", 310, -16)
+    availableHeader:SetText("Available in This Location")
+
+    local function CreateList(left, right, header)
+        local scroll = CreateFrame("ScrollFrame", nil, manager, "UIPanelScrollFrameTemplate")
+        scroll:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -8)
+        scroll:SetPoint("BOTTOMRIGHT", manager, "BOTTOMLEFT", right, 48)
+        local child = CreateFrame("Frame", nil, scroll)
+        child:SetSize(math.max(1, right - left - 28), 1)
+        scroll:SetScrollChild(child)
+        return scroll, child
+    end
+
+    local favoritesScroll, favoritesChild = CreateList(16, 302, favoritesHeader)
+    local availableScroll, availableChild = CreateList(326, 612, availableHeader)
+    local favoriteRows, availableRows = {}, {}
+
+    local favoritesEmpty = favoritesChild:CreateFontString(
+        nil, "OVERLAY", "GameFontDisableSmall")
+    favoritesEmpty:SetPoint("TOPLEFT", favoritesChild, "TOPLEFT", 6, -8)
+    favoritesEmpty:SetPoint("RIGHT", favoritesChild, "RIGHT", -8, 0)
+    favoritesEmpty:SetJustifyH("LEFT")
+    favoritesEmpty:SetText("No favorite channels yet.")
+
+    local availableEmpty = availableChild:CreateFontString(
+        nil, "OVERLAY", "GameFontDisableSmall")
+    availableEmpty:SetPoint("TOPLEFT", availableChild, "TOPLEFT", 6, -8)
+    availableEmpty:SetPoint("RIGHT", availableChild, "RIGHT", -8, 0)
+    availableEmpty:SetJustifyH("LEFT")
+
+    local function CreateFavoriteRow(index)
+        local row = CreateFrame("Frame", nil, favoritesChild)
+        row:SetSize(258, 38)
+        local bg = row:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
+        bg:SetColorTexture(0.10, 0.10, 0.12, index % 2 == 0 and 0.55 or 0.35)
+
+        local name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        name:SetPoint("TOPLEFT", row, "TOPLEFT", 6, -5)
+        name:SetPoint("RIGHT", row, "RIGHT", -70, 0)
+        name:SetJustifyH("LEFT")
+        name:SetWordWrap(false)
+        row._name = name
+
+        local rowStatus = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        rowStatus:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 6, 5)
+        rowStatus:SetPoint("RIGHT", row, "RIGHT", -70, 0)
+        rowStatus:SetJustifyH("LEFT")
+        row._status = rowStatus
+
+        local remove = CreateDarkButton(row, 60, 20, "Remove")
+        remove:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+        remove:SetScript("OnClick", function()
+            if not row._index then return end
+            local favorites = ECB:CopyTable(ECB.workingCopy.customChannels or {})
+            table.remove(favorites, row._index)
+            ECB:SetCustomChannelFavorites(favorites)
+            status:SetText("|cff55dd77Channel removed.|r")
+        end)
+        favoriteRows[index] = row
+        return row
+    end
+
+    local function CreateAvailableRow(index)
+        local row = CreateFrame("Frame", nil, availableChild)
+        row:SetSize(258, 34)
+        local bg = row:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
+        bg:SetColorTexture(0.10, 0.10, 0.12, index % 2 == 0 and 0.55 or 0.35)
+
+        local name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        name:SetPoint("LEFT", row, "LEFT", 6, 0)
+        name:SetPoint("RIGHT", row, "RIGHT", -58, 0)
+        name:SetJustifyH("LEFT")
+        name:SetWordWrap(false)
+        row._name = name
+
+        local add = CreateDarkButton(row, 48, 20, "Add")
+        add:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+        add:SetScript("OnClick", function()
+            local channel = row._channel
+            if not channel then return end
+            local favorite = ECB:BuildCustomChannelFavorite(channel)
+            local favorites = ECB:CopyTable(ECB.workingCopy.customChannels or {})
+            favorites[#favorites + 1] = favorite
+            ECB:SetCustomChannelFavorites(favorites)
+            status:SetText("|cff55dd77Channel added.|r")
+        end)
+        availableRows[index] = row
+        return row
+    end
+
+    local function HasFavorite(favorites, candidate)
+        local candidateIdentity = ECB:GetCustomChannelIdentity(candidate)
+        local candidateName = string.lower(strtrim(candidate.name or ""))
+        for _, favorite in ipairs(favorites) do
+            if ECB:GetCustomChannelIdentity(favorite) == candidateIdentity then return true end
+            if string.lower(strtrim(favorite.name or "")) == candidateName then return true end
+        end
+        return false
+    end
+
+    local function Refresh()
+        local favorites = ECB:NormalizeCustomChannelFavorites(ECB.workingCopy.customChannels)
+        ECB.workingCopy.customChannels = favorites
+
+        for _, row in ipairs(favoriteRows) do row:Hide() end
+        for i, favorite in ipairs(favorites) do
+            local row = favoriteRows[i] or CreateFavoriteRow(i)
+            local channel = ECB:ResolveCustomChannel(favorite)
+            row._index = i
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", favoritesChild, "TOPLEFT", 0, -((i - 1) * 40))
+            row._name:SetText(channel and channel.name or favorite.name)
+            if channel then
+                row._status:SetText("|cff55dd77Active (/" .. channel.localID .. ")|r")
+            else
+                row._status:SetText("|cff888888Unavailable|r")
+            end
+            row:Show()
+        end
+        if #favorites == 0 then favoritesEmpty:Show() else favoritesEmpty:Hide() end
+        favoritesChild:SetHeight(math.max(30, #favorites * 40))
+        if favoritesScroll.UpdateScrollChildRect then favoritesScroll:UpdateScrollChildRect() end
+
+        for _, row in ipairs(availableRows) do row:Hide() end
+        local available = {}
+        for _, channel in ipairs(ECB.activeCustomChannels or {}) do
+            if not HasFavorite(favorites, channel) then
+                available[#available + 1] = channel
+            end
+        end
+        for i, channel in ipairs(available) do
+            local row = availableRows[i] or CreateAvailableRow(i)
+            row._channel = channel
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", availableChild, "TOPLEFT", 0, -((i - 1) * 36))
+            row._name:SetText(channel.name .. "  |cff888888/" .. channel.localID .. "|r")
+            row:Show()
+        end
+        if #available == 0 then
+            if #(ECB.activeCustomChannels or {}) == 0 then
+                availableEmpty:SetText("No available numbered channels in this location.")
+            else
+                availableEmpty:SetText("All available channels are already favorites.")
+            end
+            availableEmpty:Show()
+        else
+            availableEmpty:Hide()
+        end
+        availableChild:SetHeight(math.max(30, #available * 36))
+        if availableScroll.UpdateScrollChildRect then availableScroll:UpdateScrollChildRect() end
+    end
+
+    addManualButton:SetScript("OnClick", function()
+        local raw = strtrim(input:GetText() or "")
+        if raw == "" then
+            status:SetText("|cffff5050Enter a channel name or an active /N.|r")
+            return
+        end
+
+        local channel = ECB:ResolveCustomChannel(raw)
+        local numeric = string.match(raw, "^/?%d+$")
+        if numeric and not channel then
+            status:SetText("|cffff5050That numbered channel is not active.|r")
+            return
+        end
+
+        local favorite = channel and ECB:BuildCustomChannelFavorite(channel) or { name = raw }
+        local favorites = ECB:NormalizeCustomChannelFavorites(ECB.workingCopy.customChannels)
+        if HasFavorite(favorites, favorite) then
+            status:SetText("|cffffcc00That channel is already a favorite.|r")
+            return
+        end
+
+        favorites[#favorites + 1] = favorite
+        ECB:SetCustomChannelFavorites(favorites)
+        input:SetText("")
+        input:ClearFocus()
+        status:SetText("|cff55dd77Channel added.|r")
+    end)
+    input:SetScript("OnEnterPressed", function()
+        addManualButton:Click()
+    end)
+    input:SetScript("OnEscapePressed", function(self)
+        self:ClearFocus()
+        manager:Hide()
+    end)
+
+    local bottomCloseButton = CreateDarkButton(manager, 80, 24, "Close")
+    bottomCloseButton:SetPoint("BOTTOMRIGHT", manager, "BOTTOMRIGHT", -16, 14)
+    bottomCloseButton:SetScript("OnClick", function() manager:Hide() end)
+
+    ECB._refreshCustomChannelManager = Refresh
+    manager:SetScript("OnShow", function()
+        status:SetText("")
+        ECB:RefreshCustomChannels(true)
+        Refresh()
+    end)
+    manager:SetScript("OnHide", function()
+        input:ClearFocus()
+        status:SetText("")
+    end)
+
+    ECB._customChannelManager = manager
+    return manager
+end
+
+function ECB:RefreshCustomChannelManager()
+    local manager = self._customChannelManager
+    if manager and manager:IsShown() and self._refreshCustomChannelManager then
+        self._refreshCustomChannelManager()
+    end
+end
+
+function ECB:ShowCustomChannelManager()
+    local manager = CreateCustomChannelManager()
+    manager:Show()
+    manager:Raise()
 end
 
 -------------------------------------------------------------------------------
@@ -584,7 +933,7 @@ local function OnSpacingChanged(self, rawVal)
     ECB:ApplySettings(ECB.workingCopy)
 end
 
-local function OnPhraseGroupSpacingChanged(self, rawVal)
+local function OnGroupSpacingChanged(self, rawVal)
     local val = floor(rawVal + 0.5)
     self._valueLabel:SetText(tostring(val))
     if updating then return end
@@ -601,22 +950,26 @@ end
 -- the per-slider OnValueChanged handlers don't each trigger a layout pass.
 -- A single ECB:ApplySettings call at the end applies all values at once.
 -------------------------------------------------------------------------------
-local function ApplyDefaults(sizeSlider, spacingSlider, verticalCheck, channelCheckboxes,
-                             phraseGapSlider, phrasePositionButton, refreshPhrases)
+local function ApplyDefaults(sizeSlider, spacingSlider, groupGapSlider, verticalCheck,
+                             showLabelsCheck, comfortableTargetsCheck,
+                             channelCheckboxes, phrasePositionButton, refreshPhrases)
     local d = ECB:GetDefaults()   -- fresh CopyTable of ECB.defaults
     ECB.workingCopy = d
     updating = true
     sizeSlider:SetValue(d.bubbleSize)       -- updates thumb + label; skips pipeline
     spacingSlider:SetValue(d.bubbleSpacing) -- updates thumb + label; skips pipeline
-    phraseGapSlider:SetValue(d.phraseGroupSpacing)
+    groupGapSlider:SetValue(d.phraseGroupSpacing)
     verticalCheck:SetChecked(d.vertical)    -- syncs checkbox; skips pipeline
+    showLabelsCheck:SetChecked(d.showButtonLabels)
+    comfortableTargetsCheck:SetChecked(d.comfortableClickTargets)
     for _, cb in pairs(channelCheckboxes) do
-        cb:SetChecked(false)                -- default: no channels hidden
+        cb:SetChecked(true)                 -- default: every built-in button visible
     end
     RefreshPhrasePositionLabel(phrasePositionButton)
     updating = false
     refreshPhrases()
     ECB:ApplySettings(ECB.workingCopy)      -- single layout pass with all values
+    ECB:RefreshCustomChannelManager()
 end
 
 -------------------------------------------------------------------------------
@@ -632,6 +985,7 @@ local function CommitWorkingCopy()
     -- Re-apply from the now-committed ECB.db so the visual state is always in
     -- sync with persisted values, even if live preview was never triggered.
     ECB:ApplySettings(ECB.db)
+    ECB:RefreshCustomChannelManager()
 end
 
 -------------------------------------------------------------------------------
@@ -650,6 +1004,7 @@ local function CancelEditing()
             ECB_DB[k] = v
         end
     end
+    ECB:RefreshCustomChannelManager()
 end
 
 -------------------------------------------------------------------------------
@@ -672,22 +1027,53 @@ function ECB:CreateBlizzardConfig()
 
     local subtitle = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
-    subtitle:SetText("Configure button appearance")
+    subtitle:SetText("Configure the button bar and shortcuts.")
+
+    local appearanceHeader = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    appearanceHeader:SetPoint("TOPLEFT", subtitle, "BOTTOMLEFT", 0, -12)
+    appearanceHeader:SetText("Appearance")
 
     local sizeSlider = CreateLabeledSlider(
-        panel, C.SLIDER.bubbleSize, subtitle, -20, 220)
+        panel, C.SLIDER.bubbleSize, appearanceHeader, -10, 220)
     local spacingSlider = CreateLabeledSlider(
-        panel, C.SLIDER.bubbleSpacing, sizeSlider, -34, 220)
+        panel, C.SLIDER.bubbleSpacing, sizeSlider, -20, 220)
+    local groupGapSlider = CreateLabeledSlider(
+        panel, C.SLIDER.phraseGroupSpacing, spacingSlider, -20, 220)
 
     sizeSlider:SetScript("OnValueChanged",    OnSizeChanged)
     spacingSlider:SetScript("OnValueChanged", OnSpacingChanged)
+    groupGapSlider:SetScript("OnValueChanged", OnGroupSpacingChanged)
 
-    local verticalCheck = CreateLabeledCheckbox(panel, "Vertical layout", spacingSlider, -30)
+    local verticalCheck = CreateLabeledCheckbox(panel, "Vertical layout", groupGapSlider, -22)
     verticalCheck:SetScript("OnClick", function(self)
         if updating then return end
         local checked = self:GetChecked()
         ECB.workingCopy.vertical = checked
         ECB_DB.vertical = checked
+        ECB:ApplySettings(ECB.workingCopy)
+    end)
+
+    local accessibilityHeader = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    accessibilityHeader:SetPoint("TOPLEFT", verticalCheck, "BOTTOMLEFT", 0, -10)
+    accessibilityHeader:SetText("Accessibility")
+
+    local showLabelsCheck = CreateLabeledCheckbox(
+        panel, "Show button labels", accessibilityHeader, -2)
+    showLabelsCheck:SetScript("OnClick", function(self)
+        if updating then return end
+        local checked = self:GetChecked() and true or false
+        ECB.workingCopy.showButtonLabels = checked
+        ECB_DB.showButtonLabels = checked
+        ECB:ApplySettings(ECB.workingCopy)
+    end)
+
+    local comfortableTargetsCheck = CreateLabeledCheckbox(
+        panel, "Comfortable click targets", showLabelsCheck, -2)
+    comfortableTargetsCheck:SetScript("OnClick", function(self)
+        if updating then return end
+        local checked = self:GetChecked() and true or false
+        ECB.workingCopy.comfortableClickTargets = checked
+        ECB_DB.comfortableClickTargets = checked
         ECB:ApplySettings(ECB.workingCopy)
     end)
 
@@ -697,12 +1083,8 @@ function ECB:CreateBlizzardConfig()
     phraseHeader:SetPoint("TOPLEFT", panel, "TOPLEFT", 285, -54)
     phraseHeader:SetText("Prepared Phrases")
 
-    local phraseGapSlider = CreateLabeledSlider(
-        panel, C.SLIDER.phraseGroupSpacing, phraseHeader, -16, 190)
-    phraseGapSlider:SetScript("OnValueChanged", OnPhraseGroupSpacingChanged)
-
     local phrasePositionButton = CreateDarkButton(panel, 150, 22, "")
-    phrasePositionButton:SetPoint("TOPLEFT", phraseGapSlider, "BOTTOMLEFT", 0, -25)
+    phrasePositionButton:SetPoint("TOPLEFT", phraseHeader, "BOTTOMLEFT", 0, -16)
     phrasePositionButton:SetScript("OnClick", function()
         if updating then return end
         ECB.workingCopy.phrasePosition =
@@ -745,38 +1127,49 @@ function ECB:CreateBlizzardConfig()
         phraseScroll:SetVerticalScroll(phraseScroll:GetVerticalScrollRange())
     end)
 
-    -- Channel visibility section
-    local visHeader = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    visHeader:SetPoint("TOPLEFT", verticalCheck, "BOTTOMLEFT", 0, -22)
-    visHeader:SetText("Hide Channels")
+    -- Positive visibility controls remain backed by the existing
+    -- hiddenChannels SavedVariables table.  Two semantic columns keep the
+    -- panel compact: local/social chats on the left, group chats on the right.
+    local builtInHeader = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    builtInHeader:SetPoint("TOPLEFT", comfortableTargetsCheck, "BOTTOMLEFT", 0, -10)
+    builtInHeader:SetText("Built-in Buttons")
 
     local channelCheckboxes = {}
-    local prevCbAnchor  = visHeader
-    local prevCbOffsetY = -8
-    for _, ch in ipairs(C.CHANNELS) do
-        local cb = CreateLabeledCheckbox(panel, ch.tooltip, prevCbAnchor, prevCbOffsetY)
+    local columnAnchors = { builtInHeader, builtInHeader }
+    for index, ch in ipairs(C.CHANNELS) do
+        local column = index <= 5 and 1 or 2
+        local firstInColumn = index == 1 or index == 6
+        local cb = CreateLabeledCheckbox(
+            panel, ch.tooltip, columnAnchors[column], -2)
+        if firstInColumn and column == 2 then
+            cb:ClearAllPoints()
+            cb:SetPoint("TOPLEFT", builtInHeader, "BOTTOMLEFT", 126, -2)
+        end
+
         local key = ch.key
         cb:SetScript("OnClick", function(self)
             if updating then return end
             if self:GetChecked() then
-                ECB.workingCopy.hiddenChannels[key] = true
-                ECB_DB.hiddenChannels[key] = true
-            else
                 ECB.workingCopy.hiddenChannels[key] = nil
                 ECB_DB.hiddenChannels[key] = nil
+            else
+                ECB.workingCopy.hiddenChannels[key] = true
+                ECB_DB.hiddenChannels[key] = true
             end
             ECB:ApplySettings(ECB.workingCopy)
         end)
         channelCheckboxes[key] = cb
-        prevCbAnchor  = cb
-        prevCbOffsetY = -4
+        columnAnchors[column] = cb
     end
 
+    local builtInBottomAnchor = columnAnchors[1]
+
     local defaultsBtn = CreateDarkButton(panel, 90, 22, "Defaults")
-    defaultsBtn:SetPoint("TOPLEFT", prevCbAnchor, "BOTTOMLEFT", 0, -16)
+    defaultsBtn:SetPoint("TOPLEFT", builtInBottomAnchor, "BOTTOMLEFT", 0, -10)
     defaultsBtn:SetScript("OnClick", function()
-        ApplyDefaults(sizeSlider, spacingSlider, verticalCheck, channelCheckboxes,
-            phraseGapSlider, phrasePositionButton, refreshPhrases)
+        ApplyDefaults(sizeSlider, spacingSlider, groupGapSlider, verticalCheck,
+            showLabelsCheck, comfortableTargetsCheck, channelCheckboxes,
+            phrasePositionButton, refreshPhrases)
     end)
 
     local lockBtn = CreateDarkButton(panel, 90, 22, "")
@@ -785,7 +1178,7 @@ function ECB:CreateBlizzardConfig()
     local resetBtn = CreateDarkButton(panel, 110, 22, "Reset Position")
     -- Keep this action on its own row.  The phrase list occupies the right
     -- column and can otherwise overlap this wider button on narrow canvases.
-    resetBtn:SetPoint("TOPLEFT", defaultsBtn, "BOTTOMLEFT", 0, -8)
+    resetBtn:SetPoint("TOPLEFT", defaultsBtn, "BOTTOMLEFT", 0, -6)
     resetBtn:SetScript("OnClick", function()
         -- Clear persisted custom position and re-anchor to default above ChatFrame1Tab
         ECB_DB.x = nil
@@ -799,7 +1192,13 @@ function ECB:CreateBlizzardConfig()
                 ECB.mainFrame:SetPoint("CENTER", UIParent, "CENTER")
             end
         end
-        print("|cff00ff00EasyChatChannelButtons:|r Position reset to default.")
+        print("|cff00ff00Easy Chat Channel Buttons:|r Position reset to default.")
+    end)
+
+    local customChannelsBtn = CreateDarkButton(panel, 150, 22, "Manage Custom Channels")
+    customChannelsBtn:SetPoint("LEFT", resetBtn, "RIGHT", 8, 0)
+    customChannelsBtn:SetScript("OnClick", function()
+        ECB:ShowCustomChannelManager()
     end)
 
     local function RefreshLockButton()
@@ -818,12 +1217,18 @@ function ECB:CreateBlizzardConfig()
 
     panel._sizeSlider        = sizeSlider
     panel._spacingSlider     = spacingSlider
+    panel._groupGapSlider    = groupGapSlider
     panel._verticalCheck     = verticalCheck
+    panel._showLabelsCheck   = showLabelsCheck
+    panel._comfortableTargetsCheck = comfortableTargetsCheck
     panel._channelCheckboxes = channelCheckboxes
-    panel._phraseGapSlider   = phraseGapSlider
+    -- Compatibility alias for code that may still use the original local
+    -- control name.  The persisted key also intentionally remains unchanged.
+    panel._phraseGapSlider   = groupGapSlider
     panel._phrasePositionButton = phrasePositionButton
     panel._refreshPhrases    = refreshPhrases
     panel._phraseScroll      = phraseScroll
+    panel._customChannelsButton = customChannelsBtn
 
     -- OnShow: seed model and sync sliders under the updating guard.
     panel:SetScript("OnShow", function()
@@ -832,24 +1237,33 @@ function ECB:CreateBlizzardConfig()
         updating = true
         sizeSlider:SetValue(ECB.workingCopy.bubbleSize)
         spacingSlider:SetValue(ECB.workingCopy.bubbleSpacing)
-        phraseGapSlider:SetValue(ECB.workingCopy.phraseGroupSpacing)
+        groupGapSlider:SetValue(ECB.workingCopy.phraseGroupSpacing)
         verticalCheck:SetChecked(ECB.workingCopy.vertical)
+        showLabelsCheck:SetChecked(ECB.workingCopy.showButtonLabels == true)
+        comfortableTargetsCheck:SetChecked(
+            ECB.workingCopy.comfortableClickTargets == true)
         local hidden = ECB.workingCopy.hiddenChannels or {}
         for key, cb in pairs(channelCheckboxes) do
-            cb:SetChecked(hidden[key] and true or false)
+            cb:SetChecked(not hidden[key])
         end
         RefreshPhrasePositionLabel(phrasePositionButton)
         updating = false
         refreshPhrases()
+        ECB:RefreshCustomChannelManager()
         RefreshLockButton()
+    end)
+
+    panel:SetScript("OnHide", function()
+        if ECB._customChannelManager then ECB._customChannelManager:Hide() end
     end)
 
     -- Blizzard panel lifecycle callbacks (called by the game, not by us).
     panel.okay    = CommitWorkingCopy
     panel.cancel  = CancelEditing
     panel.default = function()
-        ApplyDefaults(sizeSlider, spacingSlider, verticalCheck, channelCheckboxes,
-            phraseGapSlider, phrasePositionButton, refreshPhrases)
+        ApplyDefaults(sizeSlider, spacingSlider, groupGapSlider, verticalCheck,
+            showLabelsCheck, comfortableTargetsCheck, channelCheckboxes,
+            phrasePositionButton, refreshPhrases)
     end
 
     -- Register with the Retail / Midnight Settings API; fall back for older clients.
@@ -907,12 +1321,20 @@ function ECB:OpenConfig()
     updating = true
     if ui._sizeSlider    then ui._sizeSlider:SetValue(self.workingCopy.bubbleSize)       end
     if ui._spacingSlider then ui._spacingSlider:SetValue(self.workingCopy.bubbleSpacing) end
-    if ui._phraseGapSlider then ui._phraseGapSlider:SetValue(self.workingCopy.phraseGroupSpacing) end
+    local groupGapSlider = ui._groupGapSlider or ui._phraseGapSlider
+    if groupGapSlider then groupGapSlider:SetValue(self.workingCopy.phraseGroupSpacing) end
     if ui._verticalCheck then ui._verticalCheck:SetChecked(self.workingCopy.vertical)    end
+    if ui._showLabelsCheck then
+        ui._showLabelsCheck:SetChecked(self.workingCopy.showButtonLabels == true)
+    end
+    if ui._comfortableTargetsCheck then
+        ui._comfortableTargetsCheck:SetChecked(
+            self.workingCopy.comfortableClickTargets == true)
+    end
     if ui._channelCheckboxes then
         local hidden = self.workingCopy.hiddenChannels or {}
         for key, cb in pairs(ui._channelCheckboxes) do
-            cb:SetChecked(hidden[key] and true or false)
+            cb:SetChecked(not hidden[key])
         end
     end
     if ui._phrasePositionButton then

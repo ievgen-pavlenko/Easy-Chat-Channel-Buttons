@@ -33,7 +33,9 @@ C.SLIDER = {
         step  = 1,
     },
     phraseGroupSpacing = {
-        label = "Phrase Group Spacing",
+        -- The SavedVariables key retains its original name for compatibility,
+        -- but the value now separates every logical button group.
+        label = "Group Spacing",
         min   = 10,
         max   = 60,
         step  = 1,

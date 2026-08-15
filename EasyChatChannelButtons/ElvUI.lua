@@ -35,8 +35,9 @@ end
 -- Strips Blizzard button chrome and applies an ElvUI-style flat backdrop.
 -- StripTextures is an injected helper; guarded before calling.
 -- A subtle highlight texture is restored so hover feedback is not lost.
--- Used for config panel buttons (OK, Cancel, Defaults) only.
--- NOT used for circular channel bubble buttons.
+-- Retained as an integration helper for future native ElvUI controls.  The
+-- current config UI deliberately uses the same custom dark skin everywhere.
+-- This helper is never used for circular channel bubble buttons.
 -------------------------------------------------------------------------------
 function ECB:ApplyElvUIButtonStyle(btn)
     if not self:IsElvUILoaded() then return end
