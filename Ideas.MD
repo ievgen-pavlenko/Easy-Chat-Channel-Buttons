@@ -1,10 +1,15 @@
 # Ideas for Easy Chat Channel Buttons
 
-## Completed
+## Completed in 1.1.0
 
-- Custom channel Favorites for numbered zone and player-created channels.
-- Stable channel-name and zone-channel identity instead of persisted `/N` values.
-- Automatic hiding and restoration when a favorite channel becomes unavailable or available again.
+- Account-wide Favorites for numbered zone and player-created channels.
+- A `Custom Channels` manager for adding and removing Favorites.
+- Automatic first-time setup using the channels available to the player.
+- Numbered-channel buttons that follow channel-number changes and return when a Favorite becomes available again.
+- Separate visual groups for built-in chats, numbered-channel Favorites, and Prepared Phrases.
+- Optional labels for built-in chats, numbered channels, and Prepared Phrases.
+- Optional larger click areas for small bubbles.
+- Consistent empty-state guidance, tooltips, and window controls across the settings interface.
 
 ## Priority Features
 
@@ -30,14 +35,14 @@
 
 This would be particularly useful for large prepared phrase collections: imports already support up to 200 phrases, while the bar currently uses a single linear layout.
 
-### 4. Labels or Icons Inside Buttons
+### 4. Expanded Labels and Icons
 
-- Optionally display channel abbreviations such as `S`, `G`, `P`, and `R`.
 - Provide icons as an alternative to text labels.
+- Allow a custom short label for each Prepared Phrase.
 - Configure label size and color separately.
 - Add a high-contrast mode for improved accessibility.
 
-The channel definitions already contain a `label` field that is not currently rendered, so a basic version of this feature should be relatively straightforward to implement.
+Basic text labels shipped in version 1.1.0. This feature now covers additional visual choices and customization.
 
 ### 5. Additional System Buttons
 
@@ -84,7 +89,7 @@ The channel definitions already contain a `label` field that is not currently re
 
 ### Next Release
 
-- Labels inside channel buttons.
+- Expanded label customization and optional button icons.
 - Reordering for channels and prepared phrases.
 - Multiple-row or multiple-column layouts.
 - Raid Warning and Reply buttons.
