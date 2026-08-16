@@ -1,5 +1,6 @@
 local addonName, ns = ...
 local ECB = ns.ECB
+local C = ns.Constants
 
 -------------------------------------------------------------------------------
 -- EasyChatChannelButtons – Utils
@@ -8,7 +9,8 @@ local ECB = ns.ECB
 
 -- The transfer header deliberately avoids the pipe character because WoW
 -- EditBox can escape literal pipes while moving text through the clipboard.
-local PHRASE_EXPORT_HEADER = "ECBPHRASESv1:"
+local PHRASE_EXPORT_HEADER_V1 = "ECBPHRASESv1:"
+local PHRASE_EXPORT_HEADER_V2 = "ECBPHRASESv2:"
 local MAX_IMPORT_BYTES = 262144
 local MAX_IMPORT_PHRASES = 200
 local MAX_FIELD_BYTES = 4096
@@ -19,30 +21,37 @@ local function ColorByte(value, fallback)
     return math.floor(value * 255 + 0.5)
 end
 
+local function AppendField(result, value)
+    value = type(value) == "string" and value or ""
+    result[#result + 1] = tostring(#value)
+    result[#result + 1] = ":"
+    result[#result + 1] = value
+end
+
 -------------------------------------------------------------------------------
 -- ECB:SerializePhrases
 -- Length-prefixed fields preserve spaces, punctuation, UTF-8 text, and any
 -- delimiter characters without requiring an external JSON/Base64 library.
 -------------------------------------------------------------------------------
-function ECB:SerializePhrases(phrases)
+function ECB:SerializePhrases(phrases, phraseDraftBehavior)
     phrases = type(phrases) == "table" and phrases or {}
+    phraseDraftBehavior = self:NormalizePhraseDraftBehavior(phraseDraftBehavior)
 
-    local result = { PHRASE_EXPORT_HEADER, tostring(#phrases), ";" }
+    local result = { PHRASE_EXPORT_HEADER_V2, tostring(#phrases), ";" }
+    AppendField(result, phraseDraftBehavior)
     for _, phrase in ipairs(phrases) do
         phrase = type(phrase) == "table" and phrase or {}
         local text = type(phrase.text) == "string" and phrase.text or ""
         local tooltip = type(phrase.tooltip) == "string" and phrase.tooltip or ""
+        local preferredChannel = C.NormalizePhraseChannel(phrase.preferredChannel)
         local color = type(phrase.color) == "table" and phrase.color or {}
         local r = ColorByte(color.r, 0.20)
         local g = ColorByte(color.g, 0.65)
         local b = ColorByte(color.b, 1.00)
 
-        result[#result + 1] = tostring(#text)
-        result[#result + 1] = ":"
-        result[#result + 1] = text
-        result[#result + 1] = tostring(#tooltip)
-        result[#result + 1] = ":"
-        result[#result + 1] = tooltip
+        AppendField(result, text)
+        AppendField(result, tooltip)
+        AppendField(result, preferredChannel)
         result[#result + 1] = r .. "," .. g .. "," .. b .. ";"
     end
     return table.concat(result)
@@ -72,7 +81,8 @@ end
 
 -------------------------------------------------------------------------------
 -- ECB:DeserializePhrases
--- Returns a phrase array or nil plus a user-facing validation error.
+-- Returns a transfer table or nil plus a user-facing validation error.  v1
+-- imports receive CURRENT for every phrase and no draft-behavior override.
 -------------------------------------------------------------------------------
 function ECB:DeserializePhrases(exportText)
     if type(exportText) ~= "string" then return nil, "Export text is missing." end
@@ -81,11 +91,18 @@ function ECB:DeserializePhrases(exportText)
         data = string.sub(data, 4)
     end
     if #data > MAX_IMPORT_BYTES then return nil, "Export text is too large." end
-    if string.sub(data, 1, #PHRASE_EXPORT_HEADER) ~= PHRASE_EXPORT_HEADER then
+
+    local version, position
+    if string.sub(data, 1, #PHRASE_EXPORT_HEADER_V2) == PHRASE_EXPORT_HEADER_V2 then
+        version = 2
+        position = #PHRASE_EXPORT_HEADER_V2 + 1
+    elseif string.sub(data, 1, #PHRASE_EXPORT_HEADER_V1) == PHRASE_EXPORT_HEADER_V1 then
+        version = 1
+        position = #PHRASE_EXPORT_HEADER_V1 + 1
+    else
         return nil, "This is not an Easy Chat Channel Buttons phrase export."
     end
 
-    local position = #PHRASE_EXPORT_HEADER + 1
     local count, nextPosition, err = ReadUnsigned(data, position, ";")
     if not count then return nil, "Invalid phrase count: " .. (err or "unknown error") .. "." end
     position = nextPosition
@@ -94,6 +111,17 @@ function ECB:DeserializePhrases(exportText)
     end
     if type(position) ~= "number" then
         return nil, "Invalid phrase data position."
+    end
+
+    local phraseDraftBehavior
+    if version == 2 then
+        phraseDraftBehavior, position, err = ReadField(data, position)
+        if not phraseDraftBehavior then
+            return nil, "The draft behavior is invalid: " .. (err or "unknown error") .. "."
+        end
+        if not self.PHRASE_DRAFT_BEHAVIOR_BY_KEY[phraseDraftBehavior] then
+            return nil, "The export contains an unknown draft behavior."
+        end
     end
 
     local phrases = {}
@@ -105,6 +133,17 @@ function ECB:DeserializePhrases(exportText)
         local tooltip
         tooltip, position, err = ReadField(data, position)
         if not tooltip then return nil, "Phrase " .. i .. " has an invalid tooltip field." end
+
+        local preferredChannel = C.DEFAULT_PHRASE_CHANNEL
+        if version == 2 then
+            preferredChannel, position, err = ReadField(data, position)
+            if not preferredChannel then
+                return nil, "Phrase " .. i .. " has an invalid channel field."
+            end
+            if not C.PHRASE_CHANNEL_BY_KEY[preferredChannel] then
+                return nil, "Phrase " .. i .. " has an unknown preferred channel."
+            end
+        end
 
         local colorEnd = string.find(data, ";", position, true)
         if not colorEnd then return nil, "Phrase " .. i .. " has no color terminator." end
@@ -119,6 +158,7 @@ function ECB:DeserializePhrases(exportText)
         phrases[i] = {
             text = text,
             tooltip = tooltip,
+            preferredChannel = preferredChannel,
             color = { r = r / 255, g = g / 255, b = b / 255 },
         }
     end
@@ -126,5 +166,9 @@ function ECB:DeserializePhrases(exportText)
     if string.match(string.sub(data, position), "%S") then
         return nil, "Unexpected data was found after the last phrase."
     end
-    return phrases
+    return {
+        phrases = phrases,
+        phraseDraftBehavior = phraseDraftBehavior,
+        version = version,
+    }
 end

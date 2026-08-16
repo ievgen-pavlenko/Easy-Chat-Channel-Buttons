@@ -276,13 +276,18 @@ local function CreatePhraseButton(parent)
         if type(tooltip) ~= "string" or tooltip == "" then return end
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:AddLine(tooltip, 1, 1, 1, true)
+        local preferredChannel = C.NormalizePhraseChannel(phrase.preferredChannel)
+        if preferredChannel ~= C.DEFAULT_PHRASE_CHANNEL then
+            local option = C.GetPhraseChannelOption(preferredChannel)
+            GameTooltip:AddLine("Channel: " .. option.label, 0.75, 0.75, 0.75)
+        end
         GameTooltip:AddLine("Click to insert phrase.", 0.75, 0.75, 0.75)
         GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
     btn:SetScript("OnClick", function(self)
         local phrase = self._phraseDef
-        if phrase then ECB:InsertPhrase(phrase.text) end
+        if phrase then ECB:InsertPhrase(phrase.text, phrase.preferredChannel) end
     end)
 
     return btn
@@ -432,14 +437,15 @@ function ECB:RefreshButtons()
     -- are distinct visual groups.  AddGroup only inserts groupGap when both
     -- adjacent groups contain at least one visible button, so unavailable or
     -- empty groups never leave redundant whitespace.
-    if self.db.phrasePosition == "before" then
-        AddGroup(self.phraseButtons, "phrases")
-        AddGroup(self.buttons, "builtinChannels")
-        AddGroup(self.customChannelButtons, "numberedChannels")
-    else
-        AddGroup(self.buttons, "builtinChannels")
-        AddGroup(self.customChannelButtons, "numberedChannels")
-        AddGroup(self.phraseButtons, "phrases")
+    local groups = {
+        builtins = self.buttons,
+        numbered = self.customChannelButtons,
+        phrases = self.phraseButtons,
+    }
+    local order = self:GetGroupOrderOption(
+        self.db.groupOrder, self.db.phrasePosition)
+    for _, groupName in ipairs(order.groups) do
+        AddGroup(groups[groupName], groupName)
     end
 
     if count == 0 then total = 1 end
@@ -567,7 +573,11 @@ function ECB:ApplySettings(settings)
         C.SLIDER.phraseGroupSpacing.min,
         math.min(C.SLIDER.phraseGroupSpacing.max,
             tonumber(settings.phraseGroupSpacing) or self.defaults.phraseGroupSpacing))
-    self.db.phrasePosition = settings.phrasePosition == "before" and "before" or "after"
+    self.db.groupOrder = self:NormalizeGroupOrder(
+        settings.groupOrder, settings.phrasePosition)
+    self.db.phrasePosition = self:GetLegacyPhrasePosition(self.db.groupOrder)
+    self.db.phraseDraftBehavior = self:NormalizePhraseDraftBehavior(
+        settings.phraseDraftBehavior)
     self.db.showButtonLabels = settings.showButtonLabels == true
     self.db.comfortableClickTargets = settings.comfortableClickTargets == true
     self:SyncCustomChannelButtons()

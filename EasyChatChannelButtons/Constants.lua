@@ -88,6 +88,75 @@ C.CHANNEL_SLASH = {
 }
 
 -------------------------------------------------------------------------------
+-- Prepared phrase channel choices
+-- CURRENT deliberately has no slash command: it preserves the chat type that
+-- the player is already using.  Persisted values use stable chat type keys.
+-------------------------------------------------------------------------------
+C.DEFAULT_PHRASE_CHANNEL = "CURRENT"
+C.PHRASE_CHANNEL_OPTIONS = {
+    { key = "CURRENT",       label = "Current" },
+    { key = "SAY",           label = "Say (/s)" },
+    { key = "YELL",          label = "Yell (/y)" },
+    { key = "EMOTE",         label = "Emote (/em)" },
+    { key = "GUILD",         label = "Guild (/g)" },
+    { key = "OFFICER",       label = "Officer (/o)" },
+    { key = "PARTY",         label = "Party (/p)" },
+    { key = "RAID",          label = "Raid (/raid)" },
+    { key = "INSTANCE_CHAT", label = "Instance Chat (/i)" },
+    { key = "BATTLEGROUND",  label = "Battleground (/bg)" },
+}
+
+C.PHRASE_CHANNEL_BY_KEY = {}
+for _, option in ipairs(C.PHRASE_CHANNEL_OPTIONS) do
+    C.PHRASE_CHANNEL_BY_KEY[option.key] = option
+end
+
+function C.NormalizePhraseChannel(value)
+    if type(value) == "string" and C.PHRASE_CHANNEL_BY_KEY[value] then
+        return value
+    end
+    return C.DEFAULT_PHRASE_CHANNEL
+end
+
+function C.GetPhraseChannelOption(value)
+    return C.PHRASE_CHANNEL_BY_KEY[C.NormalizePhraseChannel(value)]
+end
+
+-------------------------------------------------------------------------------
+-- Runtime channel availability
+-- Kept separate from button visibility so hiding a built-in button never
+-- prevents a Prepared Phrase from targeting that otherwise available channel.
+-------------------------------------------------------------------------------
+C.CHANNEL_AVAILABLE = {
+    SAY = function() return true end,
+    YELL = function() return true end,
+    EMOTE = function() return true end,
+    GUILD = function() return IsInGuild() end,
+    OFFICER = function()
+        return IsInGuild()
+           and (CanEditOfficerNote and CanEditOfficerNote() or false)
+    end,
+    PARTY = function()
+        return IsInGroup(LE_PARTY_CATEGORY_HOME)
+           and not IsInRaid(LE_PARTY_CATEGORY_HOME)
+    end,
+    RAID = function()
+        return IsInRaid(LE_PARTY_CATEGORY_HOME)
+    end,
+    INSTANCE_CHAT = function()
+        return IsInGroup(LE_PARTY_CATEGORY_INSTANCE)
+    end,
+    BATTLEGROUND = function()
+        return IsInGroup(LE_PARTY_CATEGORY_INSTANCE)
+    end,
+}
+
+function C.IsChannelAvailable(chatType)
+    local predicate = C.CHANNEL_AVAILABLE[chatType]
+    return predicate and predicate() == true or false
+end
+
+-------------------------------------------------------------------------------
 -- Channel definitions
 -- Each entry drives one button in the bar.
 --   key      – unique identifier, matches CHANNEL_SLASH and ChatTypeInfo keys
@@ -112,21 +181,27 @@ C.CHANNELS = {
         label    = "S",
         tooltip  = C.TOOLTIPS.SAY,
         chatType = "SAY",
-        visible  = function() return not isUserHidden("SAY") end,
+        visible  = function()
+            return C.IsChannelAvailable("SAY") and not isUserHidden("SAY")
+        end,
     },
     {
         key      = "YELL",
         label    = "Y",
         tooltip  = C.TOOLTIPS.YELL,
         chatType = "YELL",
-        visible  = function() return not isUserHidden("YELL") end,
+        visible  = function()
+            return C.IsChannelAvailable("YELL") and not isUserHidden("YELL")
+        end,
     },
     {
         key      = "EMOTE",
         label    = "E",
         tooltip  = C.TOOLTIPS.EMOTE,
         chatType = "EMOTE",
-        visible  = function() return not isUserHidden("EMOTE") end,
+        visible  = function()
+            return C.IsChannelAvailable("EMOTE") and not isUserHidden("EMOTE")
+        end,
     },
     {
         key      = "GUILD",
@@ -134,7 +209,7 @@ C.CHANNELS = {
         tooltip  = C.TOOLTIPS.GUILD,
         chatType = "GUILD",
         visible  = function()
-            return IsInGuild() and not isUserHidden("GUILD")
+            return C.IsChannelAvailable("GUILD") and not isUserHidden("GUILD")
         end,
     },
     {
@@ -143,8 +218,7 @@ C.CHANNELS = {
         tooltip  = C.TOOLTIPS.OFFICER,
         chatType = "OFFICER",
         visible  = function()
-            return IsInGuild()
-               and (CanEditOfficerNote and CanEditOfficerNote() or false)
+            return C.IsChannelAvailable("OFFICER")
                and not isUserHidden("OFFICER")
         end,
     },
@@ -154,8 +228,7 @@ C.CHANNELS = {
         tooltip  = C.TOOLTIPS.PARTY,
         chatType = "PARTY",
         visible  = function()
-            return IsInGroup(LE_PARTY_CATEGORY_HOME)
-               and not IsInRaid(LE_PARTY_CATEGORY_HOME)
+            return C.IsChannelAvailable("PARTY")
                and not isUserHidden("PARTY")
         end,
     },
@@ -165,7 +238,7 @@ C.CHANNELS = {
         tooltip  = C.TOOLTIPS.RAID,
         chatType = "RAID",
         visible  = function()
-            return IsInRaid(LE_PARTY_CATEGORY_HOME)
+            return C.IsChannelAvailable("RAID")
                and not isUserHidden("RAID")
         end,
     },
@@ -175,7 +248,7 @@ C.CHANNELS = {
         tooltip  = C.TOOLTIPS.INSTANCE_CHAT,
         chatType = "INSTANCE_CHAT",
         visible  = function()
-            return IsInGroup(LE_PARTY_CATEGORY_INSTANCE)
+            return C.IsChannelAvailable("INSTANCE_CHAT")
                and not isUserHidden("INSTANCE_CHAT")
         end,
     },
@@ -185,7 +258,7 @@ C.CHANNELS = {
         tooltip  = C.TOOLTIPS.BATTLEGROUND,
         chatType = "BATTLEGROUND",
         visible  = function()
-            return IsInGroup(LE_PARTY_CATEGORY_INSTANCE)
+            return C.IsChannelAvailable("BATTLEGROUND")
                and not isUserHidden("BATTLEGROUND")
         end,
     },

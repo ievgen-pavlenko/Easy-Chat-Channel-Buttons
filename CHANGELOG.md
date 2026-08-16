@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.2.0] - 2026-08-16
+### Added
+- `Button Group Order` setting for arranging Built-ins, Numbered Channels, and Prepared Phrases in any order while preserving existing layouts automatically
+- `Duplicate` control for creating an editable copy of any Prepared Phrase with the same text, tooltip, color, and preferred channel
+- Arrow controls for moving individual Prepared Phrases up or down and immediately updating their order on the button bar
+- `Channel` dropdown for letting each Prepared Phrase keep `Current` or switch to any supported built-in chat before inserting its text, with unavailable channels safely using `Current`
+- `When Chat Has Text` setting for choosing whether a preferred channel switches an existing draft, keeps its current channel, or prevents insertion
+
+### Changed
+- Prepared Phrase exports now preserve preferred channels and the `When Chat Has Text` setting while continuing to accept older exports
+
 ## [1.1.0] - 2026-08-15
 ### Added
 - Account-wide Favorites for numbered zone and player-created chats such as General, Trade, Services, and LocalDefense; Community chats are not included

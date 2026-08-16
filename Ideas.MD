@@ -11,20 +11,23 @@
 - Optional larger click areas for small bubbles.
 - Consistent empty-state guidance, tooltips, and window controls across the settings interface.
 
+## Completed for the Next Release
+
+- A `Button Group Order` setting for arranging the Built-ins, Numbered Channels, and Prepared Phrases groups.
+- A `Duplicate` control for quickly copying an existing Prepared Phrase.
+- A preferred `Channel` for each Prepared Phrase, with `Current` as the default and configurable handling for existing chat drafts.
+- Arrow controls for arranging individual Prepared Phrases in the settings editor.
+
 ## Priority Features
 
 ### 1. Enhanced Prepared Phrases
 
-- Let each phrase target a specific channel: Current, Say, Party, Raid, Guild, or Instance Chat.
 - Support placeholders such as `{target}`, `{player}`, and `{zone}`.
-- Allow phrases to be duplicated.
-- Allow phrases to be reordered.
 - Add themed phrase sets such as Dungeon, Raid, Guild, and PvP.
 
 ### 2. Custom Button Order
 
-- Add drag-and-drop sorting for channel buttons.
-- Manage prepared phrase order separately.
+- Add drag-and-drop sorting for individual channel buttons within their group.
 - Provide an option to restore the default order.
 
 ### 3. Multiple Rows or Columns
@@ -90,14 +93,13 @@ Basic text labels shipped in version 1.1.0. This feature now covers additional v
 ### Next Release
 
 - Expanded label customization and optional button icons.
-- Reordering for channels and prepared phrases.
+- Reordering for individual channel buttons.
 - Multiple-row or multiple-column layouts.
 - Raid Warning and Reply buttons.
 
 ### Next Major Release
 
 - Prepared phrase sets.
-- A target channel for each prepared phrase.
 - `{target}`, `{player}`, and `{zone}` placeholders.
 
 ### Future Development

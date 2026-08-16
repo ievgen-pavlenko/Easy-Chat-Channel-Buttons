@@ -20,6 +20,35 @@ function ECB:GetActiveEditBox()
     return nil
 end
 
+local function InsertIntoEditBox(box, text)
+    -- Clicking an addon button can deactivate an empty edit box before its
+    -- OnClick handler runs.  Reactivate and focus the captured box before
+    -- inserting so the text is written to the visible chat input.
+    local activeBox = ChatEdit_GetActiveWindow and ChatEdit_GetActiveWindow() or nil
+    if activeBox ~= box or not box:IsVisible() then
+        if ChatEdit_ActivateChat then
+            ChatEdit_ActivateChat(box)
+        elseif box.Show then
+            box:Show()
+        end
+    end
+    box:SetFocus()
+
+    if box.Insert then
+        box:Insert(text)
+    else
+        -- Defensive fallback for clients whose edit box does not expose
+        -- Insert(); retail EditBox normally always provides it.
+        box:SetText((box:GetText() or "") .. text)
+    end
+end
+
+local function OpenChatWithPhrase(text, target)
+    local slash = target ~= C.DEFAULT_PHRASE_CHANNEL
+        and C.CHANNEL_SLASH[target] or nil
+    ChatFrame_OpenChat(slash and (slash .. " " .. text) or text, ChatFrame1)
+end
+
 -------------------------------------------------------------------------------
 -- ECB:SwitchChatType(chatType)
 -- Changes the active chat channel.
@@ -104,26 +133,58 @@ function ECB:SwitchCustomChannel(favorite)
 end
 
 -------------------------------------------------------------------------------
--- ECB:InsertPhrase(text)
--- Inserts a prepared phrase at the cursor without sending it.  If no chat edit
--- box is open, opens the default chat edit box pre-filled with the phrase.
+-- ECB:InsertPhrase(text, preferredChannel)
+-- Inserts a prepared phrase at the cursor without sending it.  CURRENT keeps
+-- the existing behavior.  A supported preferred channel switches the edit box
+-- first, subject to the global non-empty-draft rule.  Unavailable channels
+-- silently fall back to CURRENT so a phrase can still be used anywhere.
 -------------------------------------------------------------------------------
-function ECB:InsertPhrase(text)
+function ECB:InsertPhrase(text, preferredChannel)
     if type(text) ~= "string" or text == "" then return end
 
-    local box = self:GetActiveEditBox()
-    if box then
-        if box.Insert then
-            box:Insert(text)
-        else
-            -- Defensive fallback for clients whose edit box does not expose
-            -- Insert(); retail EditBox normally always provides it.
-            box:SetText((box:GetText() or "") .. text)
-        end
-        box:SetFocus()
-    else
-        ChatFrame_OpenChat(text, ChatFrame1)
+    local target = C.NormalizePhraseChannel(preferredChannel)
+    if target ~= C.DEFAULT_PHRASE_CHANNEL and not C.IsChannelAvailable(target) then
+        target = C.DEFAULT_PHRASE_CHANNEL
     end
+
+    local box = self:GetActiveEditBox()
+    if not box then
+        OpenChatWithPhrase(text, target)
+        return
+    end
+
+    local existingText = box:GetText() or ""
+    if existingText == "" then
+        if target == C.DEFAULT_PHRASE_CHANNEL then
+            InsertIntoEditBox(box, text)
+        else
+            -- Open the channel and phrase in one operation.  A separate switch
+            -- followed by Insert() can lose the phrase when clicking the addon
+            -- button deactivates an otherwise empty edit box.
+            OpenChatWithPhrase(text, target)
+        end
+        return
+    end
+
+    if target ~= C.DEFAULT_PHRASE_CHANNEL then
+        local currentChatType = box:GetAttribute("chatType")
+        if currentChatType ~= target then
+            local behavior = self:NormalizePhraseDraftBehavior(
+                self.db.phraseDraftBehavior)
+            if behavior == "current" then
+                target = C.DEFAULT_PHRASE_CHANNEL
+            elseif behavior == "block" then
+                return
+            end
+
+            if target ~= C.DEFAULT_PHRASE_CHANNEL then
+                self:SwitchChatType(target)
+                box = self:GetActiveEditBox() or box
+            end
+        end
+    end
+
+    InsertIntoEditBox(box, text)
 end
 
 -------------------------------------------------------------------------------

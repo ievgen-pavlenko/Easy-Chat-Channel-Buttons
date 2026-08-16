@@ -74,6 +74,23 @@ local function CreateDarkButton(parent, w, h, label)
     return btn
 end
 
+local function CreateDarkIconButton(parent, w, h, texturePath, tooltip)
+    local button = CreateDarkButton(parent, w, h, "")
+    local icon = button:CreateTexture(nil, "OVERLAY")
+    icon:SetPoint("CENTER")
+    icon:SetSize(math.max(1, math.min(w, h) - 4), math.max(1, math.min(w, h) - 4))
+    icon:SetTexture(texturePath)
+    button._icon = icon
+
+    button:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:AddLine(tooltip, 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    button:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    return button
+end
+
 local function RegisterEscapeWindow(frame)
     if not frame or not frame.GetName or not frame:GetName() then return end
     UISpecialFrames = UISpecialFrames or {}
@@ -210,9 +227,266 @@ local function PersistPhraseChanges()
     ECB:ApplySettings(ECB.workingCopy)
 end
 
-local function RefreshPhrasePositionLabel(button)
-    local before = ECB.workingCopy.phrasePosition == "before"
-    button._label:SetText(before and "Phrases: Before Chats" or "Phrases: After Chats")
+-------------------------------------------------------------------------------
+-- CreateGroupOrderSelector (module-private)
+-- A custom dark dropdown that matches the rest of the settings controls.
+-- A transparent dismiss layer handles outside clicks while the selector stays
+-- above it so clicking the selector a second time still closes the menu.
+-------------------------------------------------------------------------------
+local function CreateGroupOrderSelector(parent, anchorFrame, offsetY, onSelect)
+    local title = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("TOPLEFT", anchorFrame, "BOTTOMLEFT", 0, offsetY or -8)
+    title:SetText("Button Group Order")
+
+    local selector = CreateDarkButton(parent, 220, 22, "")
+    selector:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -5)
+    local selectorBaseStrata = selector:GetFrameStrata()
+    local selectorBaseLevel = selector:GetFrameLevel()
+    selector._label:ClearAllPoints()
+    selector._label:SetPoint("LEFT", selector, "LEFT", 7, 0)
+    selector._label:SetPoint("RIGHT", selector, "RIGHT", -20, 0)
+    selector._label:SetJustifyH("LEFT")
+
+    local arrow = selector:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    arrow:SetPoint("RIGHT", selector, "RIGHT", -7, 0)
+    arrow:SetText("v")
+
+    local dismiss = CreateFrame("Button", nil, UIParent)
+    dismiss:SetAllPoints(UIParent)
+    dismiss:SetFrameStrata("FULLSCREEN_DIALOG")
+    dismiss:SetFrameLevel(500)
+    dismiss:RegisterForClicks("AnyUp")
+    dismiss:EnableMouse(true)
+    dismiss:Hide()
+
+    local menu = CreateFrame(
+        "Frame", "EasyChatChannelButtonsGroupOrderDropdown", UIParent)
+    menu:SetSize(220, (#ECB.GROUP_ORDER_OPTIONS * 24) + 8)
+    menu:SetPoint("TOPLEFT", selector, "BOTTOMLEFT", 0, -2)
+    menu:SetFrameStrata("FULLSCREEN_DIALOG")
+    menu:SetFrameLevel(502)
+    menu:SetClampedToScreen(true)
+    menu:EnableMouse(true)
+    menu:Hide()
+    RegisterEscapeWindow(menu)
+
+    local border = menu:CreateTexture(nil, "BACKGROUND")
+    border:SetAllPoints()
+    border:SetColorTexture(0.32, 0.32, 0.38, 1)
+    local body = menu:CreateTexture(nil, "BACKGROUND", nil, 1)
+    body:SetPoint("TOPLEFT", menu, "TOPLEFT", 1, -1)
+    body:SetPoint("BOTTOMRIGHT", menu, "BOTTOMRIGHT", -1, 1)
+    body:SetColorTexture(0.055, 0.055, 0.07, 0.99)
+
+    local rows = {}
+    for index, option in ipairs(ECB.GROUP_ORDER_OPTIONS) do
+        local optionKey = option.key
+        local row = CreateDarkButton(menu, 212, 22, option.label)
+        row:SetPoint("TOPLEFT", menu, "TOPLEFT", 4, -4 - ((index - 1) * 24))
+        row._groupOrderKey = optionKey
+        row:SetScript("OnClick", function()
+            menu:Hide()
+            if onSelect then onSelect(optionKey) end
+        end)
+        rows[index] = row
+    end
+
+    local function RefreshSelection()
+        for _, row in ipairs(rows) do
+            if row._groupOrderKey == selector._groupOrder then
+                row._label:SetTextColor(1, 0.82, 0, 1)
+            else
+                row._label:SetTextColor(1, 1, 1, 1)
+            end
+        end
+    end
+
+    function selector:SetGroupOrder(value, legacyPhrasePosition)
+        local option = ECB:GetGroupOrderOption(value, legacyPhrasePosition)
+        self._groupOrder = option.key
+        self._label:SetText(option.label)
+        RefreshSelection()
+    end
+
+    function selector:CloseMenu()
+        menu:Hide()
+    end
+
+    selector:SetScript("OnClick", function()
+        GameTooltip:Hide()
+        if menu:IsShown() then
+            menu:Hide()
+        else
+            RefreshSelection()
+            dismiss:Show()
+            menu:Show()
+            menu:Raise()
+        end
+    end)
+    selector:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:AddLine("Button Group Order", 1, 1, 1)
+        GameTooltip:AddLine(
+            "Choose how Built-ins, Numbered Channels, and Prepared Phrases are arranged. Order runs left to right horizontally and top to bottom vertically.",
+            0.75, 0.75, 0.75, true)
+        GameTooltip:Show()
+    end)
+    selector:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    dismiss:SetScript("OnClick", function()
+        GameTooltip:Hide()
+        menu:Hide()
+    end)
+    menu:SetScript("OnShow", function(self)
+        selector:SetFrameStrata("FULLSCREEN_DIALOG")
+        selector:SetFrameLevel(501)
+        dismiss:Show()
+        if self.EnableKeyboard then self:EnableKeyboard(true) end
+        if self.SetPropagateKeyboardInput then self:SetPropagateKeyboardInput(true) end
+    end)
+    menu:SetScript("OnKeyDown", function(self, key)
+        if key == "ESCAPE" then
+            if self.SetPropagateKeyboardInput then self:SetPropagateKeyboardInput(false) end
+            self:Hide()
+        elseif self.SetPropagateKeyboardInput then
+            self:SetPropagateKeyboardInput(true)
+        end
+    end)
+    menu:SetScript("OnHide", function()
+        dismiss:Hide()
+        selector:SetFrameStrata(selectorBaseStrata)
+        selector:SetFrameLevel(selectorBaseLevel)
+    end)
+
+    selector._menu = menu
+    selector._dismiss = dismiss
+    selector._title = title
+    return selector
+end
+
+-------------------------------------------------------------------------------
+-- Shared dark option menus
+-- Phrase rows reuse one channel menu instead of allocating ten menu buttons
+-- per row.  The same primitive also drives the single draft-behavior selector.
+-------------------------------------------------------------------------------
+local activeDarkOptionMenu
+
+local function CreateDarkSelectorButton(parent, width, height)
+    local selector = CreateDarkButton(parent, width, height or 20, "")
+    selector._label:ClearAllPoints()
+    selector._label:SetPoint("LEFT", selector, "LEFT", 7, 0)
+    selector._label:SetPoint("RIGHT", selector, "RIGHT", -20, 0)
+    selector._label:SetJustifyH("LEFT")
+
+    local arrow = selector:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    arrow:SetPoint("RIGHT", selector, "RIGHT", -7, 0)
+    arrow:SetText("v")
+
+    function selector:SetOption(option)
+        if not option then return end
+        self._optionKey = option.key
+        self._label:SetText(option.label)
+    end
+    return selector
+end
+
+local function CreateDarkOptionMenu(name, width, options)
+    local dismiss = CreateFrame("Button", nil, UIParent)
+    dismiss:SetAllPoints(UIParent)
+    dismiss:SetFrameStrata("FULLSCREEN_DIALOG")
+    dismiss:SetFrameLevel(500)
+    dismiss:RegisterForClicks("AnyUp")
+    dismiss:EnableMouse(true)
+    dismiss:Hide()
+
+    local menu = CreateFrame("Frame", name, UIParent)
+    menu:SetSize(width, (#options * 24) + 8)
+    menu:SetFrameStrata("FULLSCREEN_DIALOG")
+    menu:SetFrameLevel(502)
+    menu:SetClampedToScreen(true)
+    menu:EnableMouse(true)
+    menu:Hide()
+    RegisterEscapeWindow(menu)
+
+    local border = menu:CreateTexture(nil, "BACKGROUND")
+    border:SetAllPoints()
+    border:SetColorTexture(0.32, 0.32, 0.38, 1)
+    local body = menu:CreateTexture(nil, "BACKGROUND", nil, 1)
+    body:SetPoint("TOPLEFT", menu, "TOPLEFT", 1, -1)
+    body:SetPoint("BOTTOMRIGHT", menu, "BOTTOMRIGHT", -1, 1)
+    body:SetColorTexture(0.055, 0.055, 0.07, 0.99)
+
+    local optionRows = {}
+    for index, option in ipairs(options) do
+        local optionKey = option.key
+        local row = CreateDarkButton(menu, width - 8, 22, option.label)
+        row:SetPoint("TOPLEFT", menu, "TOPLEFT", 4, -4 - ((index - 1) * 24))
+        row._optionKey = optionKey
+        row:SetScript("OnClick", function()
+            local onSelect = menu._onSelect
+            menu:Hide()
+            if onSelect then onSelect(optionKey) end
+        end)
+        optionRows[index] = row
+    end
+
+    function menu:Open(anchor, selectedKey, onSelect)
+        if self:IsShown() and self._anchor == anchor then
+            self:Hide()
+            return
+        end
+        if activeDarkOptionMenu and activeDarkOptionMenu ~= self then
+            activeDarkOptionMenu:Hide()
+        end
+
+        self._anchor = anchor
+        self._onSelect = onSelect
+        self._anchorBaseStrata = anchor:GetFrameStrata()
+        self._anchorBaseLevel = anchor:GetFrameLevel()
+        for _, row in ipairs(optionRows) do
+            if row._optionKey == selectedKey then
+                row._label:SetTextColor(1, 0.82, 0, 1)
+            else
+                row._label:SetTextColor(1, 1, 1, 1)
+            end
+        end
+
+        self:ClearAllPoints()
+        self:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -2)
+        anchor:SetFrameStrata("FULLSCREEN_DIALOG")
+        anchor:SetFrameLevel(501)
+        activeDarkOptionMenu = self
+        dismiss:Show()
+        self:Show()
+        self:Raise()
+    end
+
+    dismiss:SetScript("OnClick", function() menu:Hide() end)
+    menu:SetScript("OnShow", function(self)
+        dismiss:Show()
+        if self.EnableKeyboard then self:EnableKeyboard(true) end
+        if self.SetPropagateKeyboardInput then self:SetPropagateKeyboardInput(true) end
+    end)
+    menu:SetScript("OnKeyDown", function(self, key)
+        if key == "ESCAPE" then
+            if self.SetPropagateKeyboardInput then self:SetPropagateKeyboardInput(false) end
+            self:Hide()
+        elseif self.SetPropagateKeyboardInput then
+            self:SetPropagateKeyboardInput(true)
+        end
+    end)
+    menu:SetScript("OnHide", function(self)
+        dismiss:Hide()
+        local anchor = self._anchor
+        if anchor then
+            anchor:SetFrameStrata(self._anchorBaseStrata)
+            anchor:SetFrameLevel(self._anchorBaseLevel)
+        end
+        self._anchor = nil
+        self._onSelect = nil
+        if activeDarkOptionMenu == self then activeDarkOptionMenu = nil end
+    end)
+    return menu
 end
 
 -------------------------------------------------------------------------------
@@ -221,9 +495,9 @@ end
 -- reused while the panel is alive; each callback reads row._index so removal
 -- and reordering never leave stale closures pointing at the wrong phrase.
 -------------------------------------------------------------------------------
-local function CreatePhraseEditor(parent)
+local function CreatePhraseEditor(parent, topAnchor)
     local scroll = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", parent, "TOPLEFT", 285, -160)
+    scroll:SetPoint("TOPLEFT", topAnchor, "BOTTOMLEFT", 0, -9)
     scroll:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -32, 20)
 
     local child = CreateFrame("Frame", nil, scroll)
@@ -242,6 +516,11 @@ local function CreatePhraseEditor(parent)
 
     local rows = {}
     local Refresh
+    local ROW_HEIGHT = 109
+    local ROW_STEP = 113
+    local channelMenu = CreateDarkOptionMenu(
+        "EasyChatChannelButtonsPhraseChannelDropdown", 170,
+        C.PHRASE_CHANNEL_OPTIONS)
 
     local emptyText = child:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     emptyText:SetPoint("TOPLEFT", child, "TOPLEFT", 6, -8)
@@ -299,28 +578,87 @@ local function CreatePhraseEditor(parent)
         end
     end
 
+    local function EnsureRowVisible(index)
+        if not index then return end
+        if scroll.UpdateScrollChildRect then scroll:UpdateScrollChildRect() end
+
+        local rowTop = (index - 1) * ROW_STEP
+        local rowBottom = rowTop + ROW_HEIGHT
+        local scrollTop = scroll:GetVerticalScroll()
+        local viewportHeight = scroll:GetHeight()
+        local target = scrollTop
+
+        if rowTop < scrollTop then
+            target = rowTop
+        elseif viewportHeight > 0 and rowBottom > scrollTop + viewportHeight then
+            target = rowBottom - viewportHeight
+        end
+
+        local maxScroll = scroll:GetVerticalScrollRange()
+        scroll:SetVerticalScroll(math.max(0, math.min(target, maxScroll)))
+    end
+
+    local function SetMoveButtonEnabled(button, enabled)
+        if enabled then
+            button:Enable()
+            button:SetAlpha(1)
+        else
+            button:Disable()
+            button:SetAlpha(0.35)
+        end
+    end
+
+    local function MovePhrase(row, offset)
+        local phrases = type(ECB.workingCopy.phrases) == "table"
+            and ECB.workingCopy.phrases or {}
+        local index = row._index
+        local targetIndex = index and (index + offset) or nil
+        if not targetIndex or targetIndex < 1 or targetIndex > #phrases then return end
+
+        -- Edit boxes retain keyboard focus when another frame is clicked.  Clear
+        -- every reusable row before rebinding them so later typing cannot edit
+        -- whichever phrase moved into the focused row position.
+        for _, editorRow in ipairs(rows) do
+            if editorRow._textEdit then editorRow._textEdit:ClearFocus() end
+            if editorRow._tooltipEdit then editorRow._tooltipEdit:ClearFocus() end
+        end
+
+        phrases[index], phrases[targetIndex] = phrases[targetIndex], phrases[index]
+        PersistPhraseChanges()
+        Refresh()
+        EnsureRowVisible(targetIndex)
+    end
+
     local function CreateRow(index)
         local row = CreateFrame("Frame", nil, child)
-        row:SetHeight(82)
+        row:SetHeight(ROW_HEIGHT)
 
         local rowBg = row:CreateTexture(nil, "BACKGROUND")
         rowBg:SetAllPoints()
         rowBg:SetColorTexture(0.10, 0.10, 0.12, index % 2 == 0 and 0.55 or 0.35)
 
         local numberLabel = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        numberLabel:SetPoint("TOPLEFT", row, "TOPLEFT", 5, -5)
+        numberLabel:SetPoint("TOPLEFT", row, "TOPLEFT", 5, -3)
+        numberLabel:SetSize(64, 18)
+        numberLabel:SetJustifyH("LEFT")
+        numberLabel:SetJustifyV("MIDDLE")
         row._numberLabel = numberLabel
 
-        local colorButton = CreateDarkButton(row, 54, 18, "Color")
-        colorButton:SetPoint("TOPRIGHT", row, "TOPRIGHT", -64, -3)
-        local colorTex = colorButton:CreateTexture(nil, "OVERLAY")
-        colorTex:SetPoint("LEFT", colorButton, "LEFT", 4, 0)
-        colorTex:SetSize(10, 10)
-        row._colorTex = colorTex
-        colorButton._label:ClearAllPoints()
-        colorButton._label:SetPoint("LEFT", colorTex, "RIGHT", 3, 0)
-        colorButton._label:SetText("Color")
-        colorButton:SetScript("OnClick", function() OpenColorPicker(row) end)
+        local moveUpButton = CreateDarkIconButton(
+            row, 22, 18,
+            "Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Up",
+            "Move phrase up")
+        moveUpButton:SetPoint("LEFT", numberLabel, "RIGHT", 4, 0)
+        moveUpButton:SetScript("OnClick", function() MovePhrase(row, -1) end)
+        row._moveUpButton = moveUpButton
+
+        local moveDownButton = CreateDarkIconButton(
+            row, 22, 18,
+            "Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Up",
+            "Move phrase down")
+        moveDownButton:SetPoint("LEFT", moveUpButton, "RIGHT", 4, 0)
+        moveDownButton:SetScript("OnClick", function() MovePhrase(row, 1) end)
+        row._moveDownButton = moveDownButton
 
         local removeButton = CreateDarkButton(row, 56, 18, "Remove")
         removeButton:SetPoint("TOPRIGHT", row, "TOPRIGHT", -4, -3)
@@ -331,8 +669,55 @@ local function CreatePhraseEditor(parent)
             Refresh()
         end)
 
+        local colorButton = CreateDarkButton(row, 54, 18, "Color")
+        colorButton:SetPoint("RIGHT", removeButton, "LEFT", -4, 0)
+        local colorTex = colorButton:CreateTexture(nil, "OVERLAY")
+        colorTex:SetPoint("LEFT", colorButton, "LEFT", 4, 0)
+        colorTex:SetSize(10, 10)
+        row._colorTex = colorTex
+        colorButton._label:ClearAllPoints()
+        colorButton._label:SetPoint("LEFT", colorTex, "RIGHT", 3, 0)
+        colorButton._label:SetText("Color")
+        colorButton:SetScript("OnClick", function() OpenColorPicker(row) end)
+
+        local duplicateButton = CreateDarkButton(row, 66, 18, "Duplicate")
+        duplicateButton:SetPoint("RIGHT", colorButton, "LEFT", -4, 0)
+        duplicateButton:SetScript("OnClick", function()
+            local phraseIndex = row._index
+            local phrase = phraseIndex and ECB.workingCopy.phrases[phraseIndex]
+            if type(phrase) ~= "table" then return end
+
+            local duplicateIndex = phraseIndex + 1
+            table.insert(ECB.workingCopy.phrases, duplicateIndex, ECB:CopyTable(phrase))
+            PersistPhraseChanges()
+            Refresh()
+            EnsureRowVisible(duplicateIndex)
+        end)
+
+        local channelLabel = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        channelLabel:SetPoint("TOPLEFT", row, "TOPLEFT", 5, -29)
+        channelLabel:SetText("Channel")
+        local channelSelector = CreateDarkSelectorButton(row, 10, 20)
+        channelSelector:SetPoint("LEFT", channelLabel, "LEFT", 50, 0)
+        channelSelector:SetPoint("RIGHT", row, "RIGHT", -5, 0)
+        channelSelector:SetScript("OnClick", function()
+            local phraseIndex = row._index
+            local phrase = phraseIndex and ECB.workingCopy.phrases[phraseIndex]
+            if type(phrase) ~= "table" then return end
+            local selected = C.NormalizePhraseChannel(phrase.preferredChannel)
+            channelMenu:Open(channelSelector, selected, function(value)
+                local currentPhrase = ECB.workingCopy.phrases[phraseIndex]
+                if type(currentPhrase) ~= "table" then return end
+                currentPhrase.preferredChannel = C.NormalizePhraseChannel(value)
+                channelSelector:SetOption(
+                    C.GetPhraseChannelOption(currentPhrase.preferredChannel))
+                PersistPhraseChanges()
+            end)
+        end)
+        row._channelSelector = channelSelector
+
         local textLabel = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        textLabel:SetPoint("TOPLEFT", row, "TOPLEFT", 5, -29)
+        textLabel:SetPoint("TOPLEFT", row, "TOPLEFT", 5, -56)
         textLabel:SetText("Text")
         local textEdit = CreateDarkEditBox(row, 10)
         textEdit:SetPoint("LEFT", textLabel, "LEFT", 50, 0)
@@ -347,7 +732,7 @@ local function CreatePhraseEditor(parent)
         row._textEdit = textEdit
 
         local tooltipLabel = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        tooltipLabel:SetPoint("TOPLEFT", row, "TOPLEFT", 5, -56)
+        tooltipLabel:SetPoint("TOPLEFT", row, "TOPLEFT", 5, -83)
         tooltipLabel:SetText("Tooltip")
         local tooltipEdit = CreateDarkEditBox(row, 10)
         tooltipEdit:SetPoint("LEFT", tooltipLabel, "LEFT", 50, 0)
@@ -376,6 +761,7 @@ local function CreatePhraseEditor(parent)
                 phrase = {
                     text = tostring(phrase or ""),
                     tooltip = "",
+                    preferredChannel = C.DEFAULT_PHRASE_CHANNEL,
                     color = ECB:CopyTable(C.PHRASE_COLORS[1]),
                 }
                 phrases[i] = phrase
@@ -383,9 +769,13 @@ local function CreatePhraseEditor(parent)
             local row = rows[i] or CreateRow(i)
             row._index = i
             row:ClearAllPoints()
-            row:SetPoint("TOPLEFT", child, "TOPLEFT", 0, -((i - 1) * 86))
-            row:SetPoint("TOPRIGHT", child, "TOPRIGHT", -4, -((i - 1) * 86))
+            row:SetPoint("TOPLEFT", child, "TOPLEFT", 0, -((i - 1) * ROW_STEP))
+            row:SetPoint("TOPRIGHT", child, "TOPRIGHT", -4, -((i - 1) * ROW_STEP))
             row._numberLabel:SetText("Phrase " .. i)
+            SetMoveButtonEnabled(row._moveUpButton, i > 1)
+            SetMoveButtonEnabled(row._moveDownButton, i < #phrases)
+            row._channelSelector:SetOption(
+                C.GetPhraseChannelOption(phrase.preferredChannel))
             row._textEdit:SetText(type(phrase.text) == "string" and phrase.text or "")
             row._tooltipEdit:SetText(type(phrase.tooltip) == "string" and phrase.tooltip or "")
             local color = type(phrase.color) == "table"
@@ -396,7 +786,7 @@ local function CreatePhraseEditor(parent)
                 tonumber(color.b) or 1.00, 1)
             row:Show()
         end
-        child:SetHeight(math.max(30, #phrases * 86))
+        child:SetHeight(math.max(30, #phrases * ROW_STEP))
         if #phrases == 0 then emptyText:Show() else emptyText:Hide() end
         if scroll.UpdateScrollChildRect then scroll:UpdateScrollChildRect() end
         local maxScroll = scroll:GetVerticalScrollRange()
@@ -406,7 +796,7 @@ local function CreatePhraseEditor(parent)
         updating = false
     end
 
-    return scroll, Refresh
+    return scroll, Refresh, function() channelMenu:Hide() end
 end
 
 -------------------------------------------------------------------------------
@@ -535,15 +925,19 @@ local function CreatePhraseTransferDialog()
     end)
 
     importButton:SetScript("OnClick", function()
-        local phrases, err = ECB:DeserializePhrases(edit:GetText())
-        if not phrases then
+        local transfer, err = ECB:DeserializePhrases(edit:GetText())
+        if not transfer then
             status:SetText("|cffff5050" .. (err or "Invalid phrase export.") .. "|r")
             return
         end
 
         status:SetText("")
-        local popup = StaticPopup_Show("ECB_CONFIRM_PHRASE_IMPORT", tostring(#phrases), nil, {
-            phrases = phrases,
+        local behaviorNotice = transfer.version == 2
+            and "\n\nThis will also replace the When Chat Has Text setting." or ""
+        local popup = StaticPopup_Show(
+            "ECB_CONFIRM_PHRASE_IMPORT", tostring(#transfer.phrases),
+            behaviorNotice, {
+            transfer = transfer,
             dialog = dialog,
         })
         if popup then
@@ -560,22 +954,36 @@ local function CreatePhraseTransferDialog()
 end
 
 StaticPopupDialogs["ECB_CONFIRM_PHRASE_IMPORT"] = {
-    text = "Are you sure you want to import %s prepared phrases?\n\nThis will replace the current phrase list.",
+    text = "Are you sure you want to import %s prepared phrases?\n\nThis will replace the current phrase list.%s",
     button1 = YES,
     button2 = NO,
     OnAccept = function(_, data)
-        if not data or type(data.phrases) ~= "table" then return end
-        ECB.workingCopy.phrases = ECB:CopyTable(data.phrases)
+        local transfer = data and data.transfer
+        if not transfer or type(transfer.phrases) ~= "table" then return end
+        ECB.workingCopy.phrases = ECB:CopyTable(transfer.phrases)
         -- Confirmation makes the import an explicit committed action.  Keep
         -- it even if the legacy Interface Options panel later fires Cancel;
         -- unrelated settings still restore from their original snapshot.
-        ECB.savedBeforeEdit.phrases = ECB:CopyTable(data.phrases)
+        ECB.savedBeforeEdit.phrases = ECB:CopyTable(transfer.phrases)
+        if transfer.version == 2 and transfer.phraseDraftBehavior then
+            local behavior = ECB:NormalizePhraseDraftBehavior(
+                transfer.phraseDraftBehavior)
+            ECB.workingCopy.phraseDraftBehavior = behavior
+            ECB.savedBeforeEdit.phraseDraftBehavior = behavior
+            ECB_DB.phraseDraftBehavior = behavior
+        end
         PersistPhraseChanges()
         if ECB._blizzPanel and ECB._blizzPanel._refreshPhrases then
             ECB._blizzPanel._refreshPhrases()
         end
+        if ECB._blizzPanel and ECB._blizzPanel._phraseDraftBehaviorSelector then
+            ECB._blizzPanel._phraseDraftBehaviorSelector:SetOption(
+                ECB:GetPhraseDraftBehaviorOption(
+                    ECB.workingCopy.phraseDraftBehavior))
+        end
         if data.dialog then data.dialog:Hide() end
-        print("|cff00ff00Easy Chat Channel Buttons:|r Imported " .. #data.phrases .. " prepared phrases.")
+        print("|cff00ff00Easy Chat Channel Buttons:|r Imported "
+            .. #transfer.phrases .. " prepared phrases.")
     end,
     OnCancel = function(_, data)
         if data and data.dialog then
@@ -598,7 +1006,9 @@ function ECB:ShowPhraseExportDialog()
     dialog._instruction:SetText("Press Ctrl+C to copy the selected export text.")
     dialog._status:SetText("")
     dialog._importButton:Hide()
-    dialog._edit:SetText(self:SerializePhrases(phrases))
+    dialog._edit:SetText(self:SerializePhrases(
+        phrases, self.workingCopy.phraseDraftBehavior
+            or self.db.phraseDraftBehavior))
     dialog._editScroll:SetVerticalScroll(0)
     dialog:Show()
     dialog:Raise()
@@ -952,7 +1362,8 @@ end
 -------------------------------------------------------------------------------
 local function ApplyDefaults(sizeSlider, spacingSlider, groupGapSlider, verticalCheck,
                              showLabelsCheck, comfortableTargetsCheck,
-                             channelCheckboxes, phrasePositionButton, refreshPhrases)
+                             channelCheckboxes, groupOrderSelector,
+                             draftBehaviorSelector, refreshPhrases)
     local d = ECB:GetDefaults()   -- fresh CopyTable of ECB.defaults
     ECB.workingCopy = d
     updating = true
@@ -965,7 +1376,9 @@ local function ApplyDefaults(sizeSlider, spacingSlider, groupGapSlider, vertical
     for _, cb in pairs(channelCheckboxes) do
         cb:SetChecked(true)                 -- default: every built-in button visible
     end
-    RefreshPhrasePositionLabel(phrasePositionButton)
+    groupOrderSelector:SetGroupOrder(d.groupOrder, d.phrasePosition)
+    draftBehaviorSelector:SetOption(
+        ECB:GetPhraseDraftBehaviorOption(d.phraseDraftBehavior))
     updating = false
     refreshPhrases()
     ECB:ApplySettings(ECB.workingCopy)      -- single layout pass with all values
@@ -1044,7 +1457,21 @@ function ECB:CreateBlizzardConfig()
     spacingSlider:SetScript("OnValueChanged", OnSpacingChanged)
     groupGapSlider:SetScript("OnValueChanged", OnGroupSpacingChanged)
 
-    local verticalCheck = CreateLabeledCheckbox(panel, "Vertical layout", groupGapSlider, -22)
+    local groupOrderSelector
+    groupOrderSelector = CreateGroupOrderSelector(panel, groupGapSlider, -18, function(value)
+        if updating then return end
+        local groupOrder = ECB:NormalizeGroupOrder(
+            value, ECB.workingCopy.phrasePosition)
+        local phrasePosition = ECB:GetLegacyPhrasePosition(groupOrder)
+        ECB.workingCopy.groupOrder = groupOrder
+        ECB.workingCopy.phrasePosition = phrasePosition
+        ECB_DB.groupOrder = groupOrder
+        ECB_DB.phrasePosition = phrasePosition
+        groupOrderSelector:SetGroupOrder(groupOrder, phrasePosition)
+        ECB:ApplySettings(ECB.workingCopy)
+    end)
+
+    local verticalCheck = CreateLabeledCheckbox(panel, "Vertical layout", groupOrderSelector, -8)
     verticalCheck:SetScript("OnClick", function(self)
         if updating then return end
         local checked = self:GetChecked()
@@ -1054,11 +1481,11 @@ function ECB:CreateBlizzardConfig()
     end)
 
     local accessibilityHeader = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    accessibilityHeader:SetPoint("TOPLEFT", verticalCheck, "BOTTOMLEFT", 0, -10)
+    accessibilityHeader:SetPoint("TOPLEFT", verticalCheck, "BOTTOMLEFT", 0, -6)
     accessibilityHeader:SetText("Accessibility")
 
     local showLabelsCheck = CreateLabeledCheckbox(
-        panel, "Show button labels", accessibilityHeader, -2)
+        panel, "Show button labels", accessibilityHeader, -1)
     showLabelsCheck:SetScript("OnClick", function(self)
         if updating then return end
         local checked = self:GetChecked() and true or false
@@ -1068,7 +1495,7 @@ function ECB:CreateBlizzardConfig()
     end)
 
     local comfortableTargetsCheck = CreateLabeledCheckbox(
-        panel, "Comfortable click targets", showLabelsCheck, -2)
+        panel, "Comfortable click targets", showLabelsCheck, 0)
     comfortableTargetsCheck:SetScript("OnClick", function(self)
         if updating then return end
         local checked = self:GetChecked() and true or false
@@ -1083,22 +1510,45 @@ function ECB:CreateBlizzardConfig()
     phraseHeader:SetPoint("TOPLEFT", panel, "TOPLEFT", 285, -54)
     phraseHeader:SetText("Prepared Phrases")
 
-    local phrasePositionButton = CreateDarkButton(panel, 150, 22, "")
-    phrasePositionButton:SetPoint("TOPLEFT", phraseHeader, "BOTTOMLEFT", 0, -16)
-    phrasePositionButton:SetScript("OnClick", function()
-        if updating then return end
-        ECB.workingCopy.phrasePosition =
-            ECB.workingCopy.phrasePosition == "before" and "after" or "before"
-        ECB_DB.phrasePosition = ECB.workingCopy.phrasePosition
-        RefreshPhrasePositionLabel(phrasePositionButton)
-        ECB:ApplySettings(ECB.workingCopy)
-    end)
-
     local addPhraseButton = CreateDarkButton(panel, 90, 22, "Add Phrase")
-    addPhraseButton:SetPoint("LEFT", phrasePositionButton, "RIGHT", 8, 0)
+    addPhraseButton:SetPoint("TOPLEFT", phraseHeader, "BOTTOMLEFT", 0, -10)
+
+    local draftBehaviorLabel = panel:CreateFontString(
+        nil, "OVERLAY", "GameFontNormal")
+    draftBehaviorLabel:SetPoint("TOPLEFT", addPhraseButton, "BOTTOMLEFT", 0, -8)
+    draftBehaviorLabel:SetText("When Chat Has Text")
+
+    local draftBehaviorSelector = CreateDarkSelectorButton(panel, 220, 22)
+    draftBehaviorSelector:SetPoint(
+        "TOPLEFT", draftBehaviorLabel, "BOTTOMLEFT", 0, -5)
+    local draftBehaviorMenu = CreateDarkOptionMenu(
+        "EasyChatChannelButtonsPhraseDraftBehaviorDropdown", 220,
+        ECB.PHRASE_DRAFT_BEHAVIOR_OPTIONS)
+    draftBehaviorSelector:SetScript("OnClick", function()
+        local selected = ECB:NormalizePhraseDraftBehavior(
+            ECB.workingCopy.phraseDraftBehavior)
+        draftBehaviorMenu:Open(draftBehaviorSelector, selected, function(value)
+            local behavior = ECB:NormalizePhraseDraftBehavior(value)
+            ECB.workingCopy.phraseDraftBehavior = behavior
+            ECB_DB.phraseDraftBehavior = behavior
+            draftBehaviorSelector:SetOption(
+                ECB:GetPhraseDraftBehaviorOption(behavior))
+            ECB:ApplySettings(ECB.workingCopy)
+        end)
+    end)
+    draftBehaviorSelector:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:AddLine("When Chat Has Text", 1, 1, 1)
+        GameTooltip:AddLine(
+            "Choose whether a phrase switches an existing non-empty draft to its preferred channel, keeps the current channel, or is not inserted.",
+            0.75, 0.75, 0.75, true)
+        GameTooltip:Show()
+    end)
+    draftBehaviorSelector:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     local exportPhrasesButton = CreateDarkButton(panel, 110, 22, "Export Phrases")
-    exportPhrasesButton:SetPoint("TOPLEFT", phrasePositionButton, "BOTTOMLEFT", 0, -7)
+    exportPhrasesButton:SetPoint(
+        "TOPLEFT", draftBehaviorSelector, "BOTTOMLEFT", 0, -7)
     exportPhrasesButton:SetScript("OnClick", function()
         ECB:ShowPhraseExportDialog()
     end)
@@ -1109,7 +1559,8 @@ function ECB:CreateBlizzardConfig()
         ECB:ShowPhraseImportDialog()
     end)
 
-    local phraseScroll, refreshPhrases = CreatePhraseEditor(panel)
+    local phraseScroll, refreshPhrases, closePhraseChannelMenu =
+        CreatePhraseEditor(panel, exportPhrasesButton)
     addPhraseButton:SetScript("OnClick", function()
         if type(ECB.workingCopy.phrases) ~= "table" then
             ECB.workingCopy.phrases = {}
@@ -1119,6 +1570,7 @@ function ECB:CreateBlizzardConfig()
         table.insert(ECB.workingCopy.phrases, {
             text = "",
             tooltip = "",
+            preferredChannel = C.DEFAULT_PHRASE_CHANNEL,
             color = { r = preset.r, g = preset.g, b = preset.b },
         })
         PersistPhraseChanges()
@@ -1131,7 +1583,7 @@ function ECB:CreateBlizzardConfig()
     -- hiddenChannels SavedVariables table.  Two semantic columns keep the
     -- panel compact: local/social chats on the left, group chats on the right.
     local builtInHeader = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    builtInHeader:SetPoint("TOPLEFT", comfortableTargetsCheck, "BOTTOMLEFT", 0, -10)
+    builtInHeader:SetPoint("TOPLEFT", comfortableTargetsCheck, "BOTTOMLEFT", 0, -6)
     builtInHeader:SetText("Built-in Buttons")
 
     local channelCheckboxes = {}
@@ -1140,10 +1592,10 @@ function ECB:CreateBlizzardConfig()
         local column = index <= 5 and 1 or 2
         local firstInColumn = index == 1 or index == 6
         local cb = CreateLabeledCheckbox(
-            panel, ch.tooltip, columnAnchors[column], -2)
+            panel, ch.tooltip, columnAnchors[column], 0)
         if firstInColumn and column == 2 then
             cb:ClearAllPoints()
-            cb:SetPoint("TOPLEFT", builtInHeader, "BOTTOMLEFT", 126, -2)
+            cb:SetPoint("TOPLEFT", builtInHeader, "BOTTOMLEFT", 126, 0)
         end
 
         local key = ch.key
@@ -1165,11 +1617,11 @@ function ECB:CreateBlizzardConfig()
     local builtInBottomAnchor = columnAnchors[1]
 
     local defaultsBtn = CreateDarkButton(panel, 90, 22, "Defaults")
-    defaultsBtn:SetPoint("TOPLEFT", builtInBottomAnchor, "BOTTOMLEFT", 0, -10)
+    defaultsBtn:SetPoint("TOPLEFT", builtInBottomAnchor, "BOTTOMLEFT", 0, -6)
     defaultsBtn:SetScript("OnClick", function()
         ApplyDefaults(sizeSlider, spacingSlider, groupGapSlider, verticalCheck,
             showLabelsCheck, comfortableTargetsCheck, channelCheckboxes,
-            phrasePositionButton, refreshPhrases)
+            groupOrderSelector, draftBehaviorSelector, refreshPhrases)
     end)
 
     local lockBtn = CreateDarkButton(panel, 90, 22, "")
@@ -1178,7 +1630,7 @@ function ECB:CreateBlizzardConfig()
     local resetBtn = CreateDarkButton(panel, 110, 22, "Reset Position")
     -- Keep this action on its own row.  The phrase list occupies the right
     -- column and can otherwise overlap this wider button on narrow canvases.
-    resetBtn:SetPoint("TOPLEFT", defaultsBtn, "BOTTOMLEFT", 0, -6)
+    resetBtn:SetPoint("TOPLEFT", defaultsBtn, "BOTTOMLEFT", 0, -4)
     resetBtn:SetScript("OnClick", function()
         -- Clear persisted custom position and re-anchor to default above ChatFrame1Tab
         ECB_DB.x = nil
@@ -1225,7 +1677,8 @@ function ECB:CreateBlizzardConfig()
     -- Compatibility alias for code that may still use the original local
     -- control name.  The persisted key also intentionally remains unchanged.
     panel._phraseGapSlider   = groupGapSlider
-    panel._phrasePositionButton = phrasePositionButton
+    panel._groupOrderSelector = groupOrderSelector
+    panel._phraseDraftBehaviorSelector = draftBehaviorSelector
     panel._refreshPhrases    = refreshPhrases
     panel._phraseScroll      = phraseScroll
     panel._customChannelsButton = customChannelsBtn
@@ -1246,7 +1699,11 @@ function ECB:CreateBlizzardConfig()
         for key, cb in pairs(channelCheckboxes) do
             cb:SetChecked(not hidden[key])
         end
-        RefreshPhrasePositionLabel(phrasePositionButton)
+        groupOrderSelector:SetGroupOrder(
+            ECB.workingCopy.groupOrder, ECB.workingCopy.phrasePosition)
+        draftBehaviorSelector:SetOption(
+            ECB:GetPhraseDraftBehaviorOption(
+                ECB.workingCopy.phraseDraftBehavior))
         updating = false
         refreshPhrases()
         ECB:RefreshCustomChannelManager()
@@ -1255,6 +1712,9 @@ function ECB:CreateBlizzardConfig()
 
     panel:SetScript("OnHide", function()
         if ECB._customChannelManager then ECB._customChannelManager:Hide() end
+        groupOrderSelector:CloseMenu()
+        draftBehaviorMenu:Hide()
+        closePhraseChannelMenu()
     end)
 
     -- Blizzard panel lifecycle callbacks (called by the game, not by us).
@@ -1263,7 +1723,7 @@ function ECB:CreateBlizzardConfig()
     panel.default = function()
         ApplyDefaults(sizeSlider, spacingSlider, groupGapSlider, verticalCheck,
             showLabelsCheck, comfortableTargetsCheck, channelCheckboxes,
-            phrasePositionButton, refreshPhrases)
+            groupOrderSelector, draftBehaviorSelector, refreshPhrases)
     end
 
     -- Register with the Retail / Midnight Settings API; fall back for older clients.
@@ -1337,8 +1797,14 @@ function ECB:OpenConfig()
             cb:SetChecked(not hidden[key])
         end
     end
-    if ui._phrasePositionButton then
-        RefreshPhrasePositionLabel(ui._phrasePositionButton)
+    if ui._groupOrderSelector then
+        ui._groupOrderSelector:SetGroupOrder(
+            self.workingCopy.groupOrder, self.workingCopy.phrasePosition)
+    end
+    if ui._phraseDraftBehaviorSelector then
+        ui._phraseDraftBehaviorSelector:SetOption(
+            self:GetPhraseDraftBehaviorOption(
+                self.workingCopy.phraseDraftBehavior))
     end
     updating = false
     if ui._refreshPhrases then ui._refreshPhrases() end

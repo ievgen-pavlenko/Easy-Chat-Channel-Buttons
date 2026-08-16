@@ -10,6 +10,102 @@ local ECB = {}
 ns.ECB = ECB
 
 -------------------------------------------------------------------------------
+-- Button group order
+-- Kept in Core.lua because database migration runs before the later modules
+-- use these definitions.  Each option is an immutable display/layout preset.
+-------------------------------------------------------------------------------
+ECB.DEFAULT_GROUP_ORDER = "builtins-numbered-phrases"
+ECB.GROUP_ORDER_OPTIONS = {
+    {
+        key = "builtins-numbered-phrases",
+        label = "Built-ins > Numbered > Phrases",
+        groups = { "builtins", "numbered", "phrases" },
+    },
+    {
+        key = "builtins-phrases-numbered",
+        label = "Built-ins > Phrases > Numbered",
+        groups = { "builtins", "phrases", "numbered" },
+    },
+    {
+        key = "numbered-builtins-phrases",
+        label = "Numbered > Built-ins > Phrases",
+        groups = { "numbered", "builtins", "phrases" },
+    },
+    {
+        key = "numbered-phrases-builtins",
+        label = "Numbered > Phrases > Built-ins",
+        groups = { "numbered", "phrases", "builtins" },
+    },
+    {
+        key = "phrases-builtins-numbered",
+        label = "Phrases > Built-ins > Numbered",
+        groups = { "phrases", "builtins", "numbered" },
+    },
+    {
+        key = "phrases-numbered-builtins",
+        label = "Phrases > Numbered > Built-ins",
+        groups = { "phrases", "numbered", "builtins" },
+    },
+}
+
+ECB.GROUP_ORDER_BY_KEY = {}
+for _, option in ipairs(ECB.GROUP_ORDER_OPTIONS) do
+    ECB.GROUP_ORDER_BY_KEY[option.key] = option
+end
+
+function ECB:NormalizeGroupOrder(value, legacyPhrasePosition)
+    if type(value) == "string" and self.GROUP_ORDER_BY_KEY[value] then
+        return value
+    end
+    if legacyPhrasePosition == "before" then
+        return "phrases-builtins-numbered"
+    end
+    return self.DEFAULT_GROUP_ORDER
+end
+
+function ECB:GetGroupOrderOption(value, legacyPhrasePosition)
+    local key = self:NormalizeGroupOrder(value, legacyPhrasePosition)
+    return self.GROUP_ORDER_BY_KEY[key]
+end
+
+function ECB:GetLegacyPhrasePosition(value)
+    local option = self:GetGroupOrderOption(value, "after")
+    local phraseIndex, builtInIndex
+    for index, groupName in ipairs(option.groups) do
+        if groupName == "phrases" then phraseIndex = index end
+        if groupName == "builtins" then builtInIndex = index end
+    end
+    return phraseIndex < builtInIndex and "before" or "after"
+end
+
+-------------------------------------------------------------------------------
+-- Prepared phrase behavior for an existing non-empty chat draft
+-------------------------------------------------------------------------------
+ECB.DEFAULT_PHRASE_DRAFT_BEHAVIOR = "preferred"
+ECB.PHRASE_DRAFT_BEHAVIOR_OPTIONS = {
+    { key = "preferred", label = "Use Preferred Channel" },
+    { key = "current", label = "Keep Current Channel" },
+    { key = "block", label = "Do Not Insert" },
+}
+
+ECB.PHRASE_DRAFT_BEHAVIOR_BY_KEY = {}
+for _, option in ipairs(ECB.PHRASE_DRAFT_BEHAVIOR_OPTIONS) do
+    ECB.PHRASE_DRAFT_BEHAVIOR_BY_KEY[option.key] = option
+end
+
+function ECB:NormalizePhraseDraftBehavior(value)
+    if type(value) == "string" and self.PHRASE_DRAFT_BEHAVIOR_BY_KEY[value] then
+        return value
+    end
+    return self.DEFAULT_PHRASE_DRAFT_BEHAVIOR
+end
+
+function ECB:GetPhraseDraftBehaviorOption(value)
+    return self.PHRASE_DRAFT_BEHAVIOR_BY_KEY[
+        self:NormalizePhraseDraftBehavior(value)]
+end
+
+-------------------------------------------------------------------------------
 -- Defaults
 -------------------------------------------------------------------------------
 ECB.defaults = {
@@ -22,6 +118,8 @@ ECB.defaults = {
     phrases            = {},
     phraseGroupSpacing = 20,
     phrasePosition     = "after",
+    groupOrder         = "builtins-numbered-phrases",
+    phraseDraftBehavior = "preferred",
     showButtonLabels   = false,
     comfortableClickTargets = false,
 }
@@ -87,6 +185,15 @@ function ECB:InitializeDatabase()
     end
 
     ECB_DB = ECB_DB or {}
+
+    -- Migrate the former two-state phrase placement before generic defaults
+    -- can backfill groupOrder.  Valid new values always win, making this
+    -- migration safe and idempotent across reloads.
+    ECB_DB.groupOrder = self:NormalizeGroupOrder(
+        ECB_DB.groupOrder, ECB_DB.phrasePosition)
+    ECB_DB.phrasePosition = self:GetLegacyPhrasePosition(ECB_DB.groupOrder)
+    ECB_DB.phraseDraftBehavior = self:NormalizePhraseDraftBehavior(
+        ECB_DB.phraseDraftBehavior)
 
     -- Backfill any missing key and mirror into ECB.db in one pass.
     for k, v in pairs(self.defaults) do
