@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.2.1] - 2026-10-12
+### Added
+- Added support for WoW Forever
+
 ## [1.2.0] - 2026-08-16
 ### Added
 - `Button Group Order` setting for arranging Built-ins, Numbered Channels, and Prepared Phrases in any order while preserving existing layouts automatically
