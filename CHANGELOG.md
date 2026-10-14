@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+## [1.2.2] - 2026-10-14
+### Changed
+- Updated compatibility for WoW Retail 12.1.5 so the addon is recognized as up to date
+
 ## [1.2.1] - 2026-10-12
 ### Added
 - Added support for WoW Forever

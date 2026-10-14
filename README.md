@@ -66,7 +66,8 @@ Open the addon settings with `/ecb`, then use **Add Phrase** in the **Prepared P
 
 ## Compatibility
 
-- **WoW Version:** 12.0.1+ (Interface 120001)
+- **WoW Retail:** 12.1.5 (Interface 120105); also declares support for 12.1.0, 12.0.7, 12.0.5, and 12.0.1
+- **WoW Forever:** Interface 16001
 - **ElvUI:** Compatible — uses the standard slash-command chat path that ElvUI hooks into
 
 ## Author
